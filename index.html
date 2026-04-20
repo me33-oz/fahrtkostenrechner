@@ -41,7 +41,7 @@
     }
     .card h2 { margin: 0 0 16px; font-size: 18px; font-weight: 600; }
     label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
-    input[type="text"], input[type="password"], input[type="number"], input[type="search"] {
+    input[type="text"], input[type="password"], input[type="number"], input[type="search"], select {
       width: 100%;
       padding: 12px 14px;
       border: 1px solid var(--border);
@@ -52,11 +52,16 @@
       transition: border-color .15s, box-shadow .15s;
       font-family: inherit;
     }
-    input:focus {
+    select { cursor: pointer; appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='%236b7280' d='M6 8L0 0h12z'/></svg>"); background-repeat: no-repeat; background-position: right 14px center; padding-right: 36px; }
+    input:focus, select:focus {
       outline: none;
       border-color: var(--primary);
       box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
     }
+    .sheet-actions { display: flex; gap: 16px; margin-top: 8px; font-size: 12px; }
+    .sheet-actions a { color: var(--primary); cursor: pointer; text-decoration: none; user-select: none; }
+    .sheet-actions a:hover { text-decoration: underline; }
+    .sheet-actions a.muted { color: var(--muted); }
     .field { margin-bottom: 14px; position: relative; }
     .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
     @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
@@ -227,9 +232,18 @@
               <li>Neues Google Sheet anlegen: <a href="https://sheets.new" target="_blank" rel="noopener">sheets.new</a></li>
               <li>Menü: <code>Erweiterungen → Apps Script</code></li>
               <li>Gesamten Code löschen, folgenden einfügen:
-<pre>function doPost(e) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+<pre>function doGet() {
+  const sheets = SpreadsheetApp.getActiveSpreadsheet()
+    .getSheets().map(s =&gt; s.getName());
+  return ContentService.createTextOutput(JSON.stringify({sheets}))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
   const data = JSON.parse(e.postData.contents);
+  const name = (data.sheetName || "Tabelle1").toString().slice(0, 100);
+  let sheet = ss.getSheetByName(name) || ss.insertSheet(name);
   if (sheet.getLastRow() === 0) {
     sheet.appendRow(["Datum","Start","Ziel","km","€/km","Einfach (€)","Hin+Rück (€)"]);
   }
@@ -237,9 +251,10 @@
     new Date(), data.origin, data.destination,
     data.km, data.rate, data.oneWay, data.roundTrip
   ]);
-  return ContentService.createTextOutput(JSON.stringify({ok:true}))
+  return ContentService.createTextOutput(JSON.stringify({ok:true, sheet:name}))
     .setMimeType(ContentService.MimeType.JSON);
 }</pre>
+              <div class="hint" style="margin-top:6px;"><b>Wichtig:</b> Wenn du das Skript änderst, nochmal <code>Bereitstellen → Bereitstellung verwalten → Bearbeiten → Neue Version → Bereitstellen</code>.</div>
               </li>
               <li>Speichern (Disketten-Symbol), Projekt beliebig benennen.</li>
               <li>Oben rechts: <code>Bereitstellen → Neue Bereitstellung</code></li>
@@ -287,6 +302,14 @@
             <div class="sub" id="costRoundTripCalc"></div>
           </div>
         </div>
+        <div class="field" id="sheetPicker" style="display:none; position:static; margin-top: 18px;">
+          <label for="sheetSelect">Ziel-Tab im Google Sheet</label>
+          <select id="sheetSelect"><option>Tabelle1</option></select>
+          <div class="sheet-actions">
+            <a id="newSheetLink">+ Neuer Tab</a>
+            <a id="refreshSheetsLink" class="muted">↻ Liste aktualisieren</a>
+          </div>
+        </div>
         <button id="saveSheetBtn" class="save-btn" style="display:none;">In Google Sheet speichern</button>
         <div id="saveStatus" class="status" style="display:none; margin-top:10px;"></div>
       </div>
@@ -312,6 +335,7 @@
     const LS_RATE = "fahrtkosten_rate";
     const LS_COUNTRY = "fahrtkosten_country";
     const LS_WEBHOOK = "fahrtkosten_webhook";
+    const LS_SHEETNAME = "fahrtkosten_sheetname";
 
     const $ = (id) => document.getElementById(id);
     const apiKeyInput = $("apiKey");
@@ -340,7 +364,12 @@
     const webhookInput = $("webhookUrl");
     const saveSheetBtn = $("saveSheetBtn");
     const saveStatusEl = $("saveStatus");
+    const sheetPicker = $("sheetPicker");
+    const sheetSelect = $("sheetSelect");
+    const newSheetLink = $("newSheetLink");
+    const refreshSheetsLink = $("refreshSheetsLink");
     let lastCalculation = null;
+    let loadedSheetNames = [];
 
     let autocompleteService = null;
     let distanceService = null;
@@ -363,7 +392,51 @@
     }
     webhookInput.addEventListener("change", () => {
       if (!EMBEDDED_WEBHOOK_URL) localStorage.setItem(LS_WEBHOOK, webhookInput.value.trim());
+      loadSheetList(); // Liste neu laden bei URL-Änderung
     });
+
+    async function loadSheetList() {
+      const url = webhookInput.value.trim();
+      if (!url) { sheetPicker.style.display = "none"; return; }
+      sheetPicker.style.display = "block";
+      refreshSheetsLink.textContent = "Lade...";
+      try {
+        const res = await fetch(url, { method: "GET", redirect: "follow" });
+        const data = await res.json();
+        const names = Array.isArray(data.sheets) ? data.sheets : [];
+        if (names.length > 0) {
+          loadedSheetNames = names;
+          const saved = localStorage.getItem(LS_SHEETNAME);
+          sheetSelect.innerHTML = names.map(n => `<option value="${n.replace(/"/g,'&quot;')}"${n === saved ? " selected" : ""}>${n}</option>`).join("");
+        }
+      } catch (e) {
+        // Fehler ignorieren – Dropdown bleibt mit Default-Wert
+        console.warn("Konnte Sheet-Liste nicht laden:", e);
+      } finally {
+        refreshSheetsLink.textContent = "↻ Liste aktualisieren";
+      }
+    }
+
+    sheetSelect.addEventListener("change", () => {
+      localStorage.setItem(LS_SHEETNAME, sheetSelect.value);
+    });
+
+    newSheetLink.addEventListener("click", () => {
+      const name = (prompt("Name für neuen Tab:") || "").trim();
+      if (!name) return;
+      // Wenn Name schon vorhanden, einfach auswählen
+      const existing = Array.from(sheetSelect.options).find(o => o.value === name);
+      if (existing) { sheetSelect.value = name; }
+      else {
+        const opt = document.createElement("option");
+        opt.value = name; opt.textContent = name + " (neu)";
+        sheetSelect.appendChild(opt);
+        sheetSelect.value = name;
+      }
+      localStorage.setItem(LS_SHEETNAME, name);
+    });
+
+    refreshSheetsLink.addEventListener("click", loadSheetList);
 
     settingsToggle.addEventListener("click", () => settings.classList.toggle("open"));
     changeKeyBtn.addEventListener("click", () => {
@@ -535,6 +608,7 @@
         apiKeyCard.style.display = "none";
         mainCard.style.display = "block";
         originInput.focus();
+        loadSheetList();
       } catch (err) {
         showKeyStatus("Fehler beim Laden: " + err.message, "error");
       } finally {
@@ -550,7 +624,7 @@
         // "API-Key ändern"-Button ausblenden, damit Kollegen nichts kaputt machen
         if (changeKeyBtn) changeKeyBtn.style.display = "none";
         loadGoogleMaps(EMBEDDED_API_KEY)
-          .then(() => { initServices(); originInput.focus(); })
+          .then(() => { initServices(); originInput.focus(); loadSheetList(); })
           .catch(err => {
             apiKeyCard.style.display = "block";
             mainCard.style.display = "none";
@@ -629,7 +703,9 @@
         saveSheetBtn.classList.remove("saved");
         saveSheetBtn.textContent = "In Google Sheet speichern";
         saveSheetBtn.disabled = false;
-        saveSheetBtn.style.display = webhookInput.value.trim() ? "block" : "none";
+        const hasWebhook = !!webhookInput.value.trim();
+        saveSheetBtn.style.display = hasWebhook ? "block" : "none";
+        sheetPicker.style.display = hasWebhook ? "block" : "none";
         saveStatusEl.style.display = "none";
       });
     });
@@ -655,14 +731,20 @@
       saveStatusEl.className = "status loading";
       saveStatusEl.style.display = "block";
 
+      const payload = { ...lastCalculation, sheetName: sheetSelect.value || "Tabelle1" };
+
       try {
         // Content-Type text/plain vermeidet CORS-Preflight bei Apps Script
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 20000);
         const res = await fetch(url, {
           method: "POST",
           headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: JSON.stringify(lastCalculation),
-          redirect: "follow"
+          body: JSON.stringify(payload),
+          redirect: "follow",
+          signal: controller.signal
         });
+        clearTimeout(timeoutId);
         let ok = res.ok;
         try {
           const json = await res.json();
@@ -670,7 +752,7 @@
         } catch (_) { /* Antwort ist kein JSON – ignorieren */ }
         if (!ok) throw new Error("Server antwortete mit Status " + res.status);
 
-        saveStatusEl.textContent = "✓ Erfolgreich im Google Sheet gespeichert.";
+        saveStatusEl.textContent = `✓ In Tab „${payload.sheetName}" gespeichert.`;
         saveStatusEl.className = "status info";
         saveSheetBtn.classList.add("saved");
         saveSheetBtn.textContent = "✓ Gespeichert";
