@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fahrtkostenrechner</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --card: #ffffff;
+      --text: #1a2238;
+      --muted: #6b7280;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --accent: #10b981;
+      --border: #e5e7eb;
+      --shadow: 0 10px 30px rgba(0,0,0,0.08);
+      --radius: 14px;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: linear-gradient(135deg, #eef2ff 0%, #f5f7fb 60%, #ecfeff 100%);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      min-height: 100vh;
+    }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 40px 20px 80px; }
+    header { text-align: center; margin-bottom: 28px; }
+    header h1 { margin: 0 0 6px; font-size: 30px; letter-spacing: -0.02em; }
+    header p { margin: 0; color: var(--muted); }
+
+    .card {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 24px;
+      margin-bottom: 20px;
+      border: 1px solid var(--border);
+    }
+    .card h2 { margin: 0 0 16px; font-size: 18px; font-weight: 600; }
+    label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+    input[type="text"], input[type="password"], input[type="number"], input[type="search"] {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-size: 15px;
+      background: #fff;
+      color: var(--text);
+      transition: border-color .15s, box-shadow .15s;
+      font-family: inherit;
+    }
+    input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+    }
+    .field { margin-bottom: 14px; position: relative; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
+
+    button {
+      width: 100%;
+      padding: 14px 16px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s, transform .05s;
+      font-family: inherit;
+    }
+    button:hover { background: var(--primary-hover); }
+    button:active { transform: translateY(1px); }
+    button:disabled { background: #9ca3af; cursor: not-allowed; }
+
+    .result {
+      background: linear-gradient(135deg, #eff6ff 0%, #ecfdf5 100%);
+      border: 1px solid #dbeafe;
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-top: 20px;
+    }
+    .result .km { text-align: center; font-size: 42px; font-weight: 700; color: var(--text); margin: 0 0 4px; letter-spacing: -0.03em; }
+    .result .km small { font-size: 18px; color: var(--muted); font-weight: 500; }
+    .result .distance-label { text-align: center; color: var(--muted); font-size: 14px; margin-bottom: 20px; }
+    .costs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 560px) { .costs { grid-template-columns: 1fr; } }
+    .cost-box { background: white; border-radius: 10px; padding: 16px; text-align: center; border: 1px solid var(--border); }
+    .cost-box .label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 600; margin-bottom: 6px; }
+    .cost-box .value { font-size: 26px; font-weight: 700; color: var(--primary); }
+    .cost-box.accent .value { color: var(--accent); }
+    .cost-box .sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+    .settings-toggle {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      padding: 8px 14px;
+      font-size: 13px;
+      width: auto;
+      margin-bottom: 16px;
+    }
+    .settings-toggle:hover { background: #f3f4f6; color: var(--text); }
+    .settings { display: none; }
+    .settings.open { display: block; }
+
+    .status { text-align: center; padding: 12px; border-radius: 10px; margin-top: 14px; font-size: 14px; }
+    .status.error { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+    .status.loading { background: #eff6ff; color: var(--primary); border: 1px solid #dbeafe; }
+    .status.info { background: #f9fafb; color: var(--muted); border: 1px solid var(--border); }
+
+    /* Eigene Autocomplete-Dropdown */
+    .ac-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin-top: 4px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+      z-index: 100;
+      max-height: 260px;
+      overflow-y: auto;
+      display: none;
+    }
+    .ac-dropdown.open { display: block; }
+    .ac-item {
+      padding: 10px 14px;
+      font-size: 14px;
+      cursor: pointer;
+      border-bottom: 1px solid var(--border);
+      line-height: 1.35;
+    }
+    .ac-item:last-child { border-bottom: none; }
+    .ac-item:hover, .ac-item.active { background: #eff6ff; color: var(--primary); }
+    .ac-item .main { font-weight: 500; color: var(--text); }
+    .ac-item .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .ac-item:hover .main, .ac-item.active .main { color: var(--primary); }
+
+    .rate-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: end; margin-top: 10px; }
+    @media (max-width: 560px) { .rate-row { grid-template-columns: 1fr; } }
+    .footer-note { text-align: center; color: var(--muted); font-size: 12px; margin-top: 20px; }
+    .hint { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+    .hint a { color: var(--primary); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Fahrtkostenrechner</h1>
+      <p>Entfernung berechnen &amp; Fahrtkosten ermitteln</p>
+    </header>
+
+    <div class="card" id="apiKeyCard">
+      <h2>Google Maps API-Key</h2>
+      <div class="field">
+        <label for="apiKey">Dein Google Maps API-Key</label>
+        <input type="password" id="apiKey" placeholder="AIza..." autocomplete="off" data-lpignore="true" data-form-type="other" />
+        <div class="hint">
+          Der Key wird nur lokal in deinem Browser gespeichert. Er muss folgende APIs aktiviert haben:
+          <b>Maps JavaScript API</b>, <b>Places API</b>, <b>Distance Matrix API</b>.
+          <a href="https://console.cloud.google.com/google/maps-apis/credentials" target="_blank" rel="noopener">Key verwalten</a>.
+        </div>
+      </div>
+      <button id="saveKeyBtn">Key speichern &amp; Karte laden</button>
+      <div id="keyStatus" class="status info" style="display:none;"></div>
+    </div>
+
+    <div class="card" id="mainCard" style="display:none;">
+      <button class="settings-toggle" id="settingsToggle" type="button">Einstellungen</button>
+      <div class="settings" id="settings">
+        <div class="rate-row">
+          <div class="field" style="position:static;">
+            <label for="rate">Kilometerpauschale (€ pro km)</label>
+            <input type="number" id="rate" value="0.40" step="0.01" min="0" />
+          </div>
+          <div class="field" style="position:static;">
+            <label for="country">Land für Autocomplete</label>
+            <input type="text" id="country" value="de" maxlength="2" placeholder="z. B. de, at, ch" />
+          </div>
+        </div>
+        <button id="changeKeyBtn" class="settings-toggle" type="button" style="margin-top:4px;">API-Key ändern</button>
+        <div class="hint">Tipp: Leeres Feld = weltweite Suche.</div>
+      </div>
+
+      <form autocomplete="off" onsubmit="return false;">
+        <div class="field">
+          <label for="origin">Startadresse</label>
+          <input type="search" id="origin" name="fk_origin_nosave" placeholder="Adresse oder PLZ eingeben..."
+                 autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                 data-lpignore="true" data-form-type="other" data-1p-ignore="true" />
+          <div class="ac-dropdown" id="originDropdown"></div>
+        </div>
+        <div class="field">
+          <label for="destination">Zieladresse</label>
+          <input type="search" id="destination" name="fk_dest_nosave" placeholder="Adresse oder PLZ eingeben..."
+                 autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                 data-lpignore="true" data-form-type="other" data-1p-ignore="true" />
+          <div class="ac-dropdown" id="destDropdown"></div>
+        </div>
+      </form>
+
+      <button id="calcBtn">Entfernung &amp; Kosten berechnen</button>
+      <div id="status" class="status" style="display:none;"></div>
+
+      <div class="result" id="result" style="display:none;">
+        <p class="km"><span id="km">0</span> <small>km</small></p>
+        <p class="distance-label" id="distanceLabel"></p>
+        <div class="costs">
+          <div class="cost-box">
+            <div class="label">Einfache Fahrt</div>
+            <div class="value" id="costOneWay">–</div>
+            <div class="sub" id="costOneWayCalc"></div>
+          </div>
+          <div class="cost-box accent">
+            <div class="label">Hin- &amp; Rückfahrt</div>
+            <div class="value" id="costRoundTrip">–</div>
+            <div class="sub" id="costRoundTripCalc"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p class="footer-note">Entfernungen werden per Google Maps berechnet und auf den nächsten vollen Kilometer aufgerundet.</p>
+  </div>
+
+  <script>
+    const LS_KEY = "fahrtkosten_gmaps_key";
+    const LS_RATE = "fahrtkosten_rate";
+    const LS_COUNTRY = "fahrtkosten_country";
+
+    const $ = (id) => document.getElementById(id);
+    const apiKeyInput = $("apiKey");
+    const saveKeyBtn = $("saveKeyBtn");
+    const keyStatus = $("keyStatus");
+    const apiKeyCard = $("apiKeyCard");
+    const mainCard = $("mainCard");
+    const settingsToggle = $("settingsToggle");
+    const settings = $("settings");
+    const changeKeyBtn = $("changeKeyBtn");
+    const rateInput = $("rate");
+    const countryInput = $("country");
+    const originInput = $("origin");
+    const destInput = $("destination");
+    const originDropdown = $("originDropdown");
+    const destDropdown = $("destDropdown");
+    const calcBtn = $("calcBtn");
+    const statusEl = $("status");
+    const resultEl = $("result");
+    const kmEl = $("km");
+    const distanceLabelEl = $("distanceLabel");
+    const costOneWayEl = $("costOneWay");
+    const costOneWayCalcEl = $("costOneWayCalc");
+    const costRoundTripEl = $("costRoundTrip");
+    const costRoundTripCalcEl = $("costRoundTripCalc");
+
+    let autocompleteService = null;
+    let distanceService = null;
+    let sessionToken = null;
+    let mapsLoaded = false;
+
+    const savedRate = localStorage.getItem(LS_RATE);
+    if (savedRate) rateInput.value = savedRate;
+    const savedCountry = localStorage.getItem(LS_COUNTRY);
+    if (savedCountry !== null) countryInput.value = savedCountry;
+    rateInput.addEventListener("change", () => localStorage.setItem(LS_RATE, rateInput.value));
+    countryInput.addEventListener("change", () => localStorage.setItem(LS_COUNTRY, countryInput.value));
+
+    settingsToggle.addEventListener("click", () => settings.classList.toggle("open"));
+    changeKeyBtn.addEventListener("click", () => {
+      mainCard.style.display = "none";
+      apiKeyCard.style.display = "block";
+      apiKeyInput.value = "";
+      apiKeyInput.focus();
+    });
+
+    function showKeyStatus(msg, type = "info") {
+      keyStatus.textContent = msg;
+      keyStatus.className = "status " + type;
+      keyStatus.style.display = "block";
+    }
+    function hideKeyStatus() { keyStatus.style.display = "none"; }
+    function showStatus(msg, type = "info") {
+      statusEl.textContent = msg;
+      statusEl.className = "status " + type;
+      statusEl.style.display = "block";
+    }
+    function hideStatus() { statusEl.style.display = "none"; }
+
+    function loadGoogleMaps(apiKey) {
+      return new Promise((resolve, reject) => {
+        if (mapsLoaded) { resolve(); return; }
+        window.__gmapsCallback = () => { mapsLoaded = true; resolve(); };
+        window.gm_authFailure = () => {
+          showKeyStatus("Google Maps API-Key wurde abgelehnt. Prüfe Key + aktivierte APIs (Maps JavaScript, Places, Distance Matrix) + Billing.", "error");
+          mainCard.style.display = "none";
+          apiKeyCard.style.display = "block";
+        };
+        const script = document.createElement("script");
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=places&language=de&region=DE&callback=__gmapsCallback`;
+        script.async = true;
+        script.defer = true;
+        script.onerror = () => reject(new Error("Google Maps konnte nicht geladen werden (Netzwerkfehler)."));
+        document.head.appendChild(script);
+      });
+    }
+
+    function initServices() {
+      autocompleteService = new google.maps.places.AutocompleteService();
+      distanceService = new google.maps.DistanceMatrixService();
+      sessionToken = new google.maps.places.AutocompleteSessionToken();
+      attachAutocomplete(originInput, originDropdown);
+      attachAutocomplete(destInput, destDropdown);
+    }
+
+    function debounce(fn, delay) {
+      let t; return function(...args) { clearTimeout(t); t = setTimeout(() => fn.apply(this, args), delay); };
+    }
+
+    function getCountryRestriction() {
+      const c = (countryInput.value || "").trim().toLowerCase();
+      return c ? { country: c } : undefined;
+    }
+
+    function attachAutocomplete(inputEl, dropdownEl) {
+      let currentPredictions = [];
+      let activeIdx = -1;
+
+      const render = (items) => {
+        if (!items || items.length === 0) {
+          dropdownEl.classList.remove("open");
+          dropdownEl.innerHTML = "";
+          return;
+        }
+        dropdownEl.innerHTML = items.map((p, i) => {
+          const main = p.structured_formatting?.main_text || p.description;
+          const sub = p.structured_formatting?.secondary_text || "";
+          return `<div class="ac-item${i === activeIdx ? " active" : ""}" data-idx="${i}">
+            <div class="main">${escapeHtml(main)}</div>
+            ${sub ? `<div class="sub">${escapeHtml(sub)}</div>` : ""}
+          </div>`;
+        }).join("");
+        dropdownEl.classList.add("open");
+      };
+
+      const escapeHtml = (s) => s.replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[c]));
+
+      const fetchPredictions = debounce((value) => {
+        if (!value || value.length < 2) { currentPredictions = []; activeIdx = -1; render([]); return; }
+        if (!autocompleteService) return;
+        autocompleteService.getPlacePredictions({
+          input: value,
+          componentRestrictions: getCountryRestriction(),
+          sessionToken: sessionToken,
+          types: ["geocode"]
+        }, (predictions, status) => {
+          if (status !== google.maps.places.PlacesServiceStatus.OK || !predictions) {
+            currentPredictions = []; activeIdx = -1; render([]);
+            if (status === "REQUEST_DENIED") {
+              showStatus("Places API abgelehnt: Bitte 'Places API' im Google-Cloud-Projekt aktivieren und Billing prüfen.", "error");
+            }
+            return;
+          }
+          currentPredictions = predictions;
+          activeIdx = -1;
+          render(predictions);
+        });
+      }, 250);
+
+      inputEl.addEventListener("input", (e) => {
+        hideStatus();
+        fetchPredictions(e.target.value.trim());
+      });
+
+      inputEl.addEventListener("focus", () => {
+        if (currentPredictions.length) render(currentPredictions);
+      });
+
+      inputEl.addEventListener("blur", () => {
+        setTimeout(() => dropdownEl.classList.remove("open"), 150);
+      });
+
+      inputEl.addEventListener("keydown", (e) => {
+        if (!dropdownEl.classList.contains("open")) {
+          if (e.key === "Enter") { e.preventDefault(); calcBtn.click(); }
+          return;
+        }
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          activeIdx = Math.min(activeIdx + 1, currentPredictions.length - 1);
+          render(currentPredictions);
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault();
+          activeIdx = Math.max(activeIdx - 1, 0);
+          render(currentPredictions);
+        } else if (e.key === "Enter") {
+          e.preventDefault();
+          if (activeIdx >= 0 && currentPredictions[activeIdx]) {
+            selectPrediction(currentPredictions[activeIdx]);
+          } else {
+            dropdownEl.classList.remove("open");
+            calcBtn.click();
+          }
+        } else if (e.key === "Escape") {
+          dropdownEl.classList.remove("open");
+        }
+      });
+
+      const selectPrediction = (p) => {
+        inputEl.value = p.description;
+        currentPredictions = [];
+        activeIdx = -1;
+        dropdownEl.classList.remove("open");
+        sessionToken = new google.maps.places.AutocompleteSessionToken();
+      };
+
+      dropdownEl.addEventListener("mousedown", (e) => {
+        const item = e.target.closest(".ac-item");
+        if (!item) return;
+        e.preventDefault();
+        const idx = parseInt(item.dataset.idx, 10);
+        if (!isNaN(idx) && currentPredictions[idx]) selectPrediction(currentPredictions[idx]);
+      });
+    }
+
+    saveKeyBtn.addEventListener("click", async () => {
+      const key = apiKeyInput.value.trim();
+      if (!key) { showKeyStatus("Bitte einen API-Key eingeben.", "error"); return; }
+      localStorage.setItem(LS_KEY, key);
+      showKeyStatus("Lade Google Maps...", "loading");
+      saveKeyBtn.disabled = true;
+      try {
+        await loadGoogleMaps(key);
+        initServices();
+        hideKeyStatus();
+        apiKeyCard.style.display = "none";
+        mainCard.style.display = "block";
+        originInput.focus();
+      } catch (err) {
+        showKeyStatus("Fehler beim Laden: " + err.message, "error");
+      } finally {
+        saveKeyBtn.disabled = false;
+      }
+    });
+
+    window.addEventListener("DOMContentLoaded", () => {
+      const saved = localStorage.getItem(LS_KEY);
+      if (saved) {
+        apiKeyInput.value = saved;
+        saveKeyBtn.click();
+      } else {
+        apiKeyInput.focus();
+      }
+    });
+
+    function formatEuro(value) {
+      return value.toLocaleString("de-DE", { style: "currency", currency: "EUR", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    calcBtn.addEventListener("click", () => {
+      const origin = originInput.value.trim();
+      const destination = destInput.value.trim();
+      if (!origin || !destination) { showStatus("Bitte beide Adressen eingeben.", "error"); return; }
+      const rate = parseFloat((rateInput.value || "0").replace(",", "."));
+      if (isNaN(rate) || rate < 0) { showStatus("Bitte eine gültige Kilometerpauschale angeben.", "error"); return; }
+      if (!distanceService) { showStatus("Google Maps noch nicht bereit.", "error"); return; }
+
+      showStatus("Berechne Entfernung...", "loading");
+      resultEl.style.display = "none";
+      calcBtn.disabled = true;
+
+      distanceService.getDistanceMatrix({
+        origins: [origin],
+        destinations: [destination],
+        travelMode: google.maps.TravelMode.DRIVING,
+        unitSystem: google.maps.UnitSystem.METRIC,
+      }, (response, status) => {
+        calcBtn.disabled = false;
+        if (status !== "OK") {
+          let msg = "Fehler: " + status;
+          if (status === "REQUEST_DENIED") msg = "Distance Matrix API abgelehnt. Bitte im Google-Cloud-Projekt aktivieren und Billing prüfen.";
+          showStatus(msg, "error"); return;
+        }
+        const elem = response?.rows?.[0]?.elements?.[0];
+        if (!elem) { showStatus("Keine Route gefunden.", "error"); return; }
+        if (elem.status !== "OK") {
+          let msg = "Keine Route";
+          if (elem.status === "ZERO_RESULTS") msg = "Keine Route zwischen diesen Adressen gefunden.";
+          else if (elem.status === "NOT_FOUND") msg = "Eine der Adressen konnte nicht gefunden werden.";
+          showStatus(msg + " (" + elem.status + ")", "error"); return;
+        }
+
+        const meters = elem.distance.value;
+        const km = Math.ceil(meters / 1000);
+        const oneWay = km * rate;
+        const roundTrip = km * rate * 2;
+
+        kmEl.textContent = km.toLocaleString("de-DE");
+        distanceLabelEl.textContent = `${response.originAddresses[0]} → ${response.destinationAddresses[0]} (${elem.distance.text}, aufgerundet)`;
+        costOneWayEl.textContent = formatEuro(oneWay);
+        costOneWayCalcEl.textContent = `${km} km × ${formatEuro(rate)}`;
+        costRoundTripEl.textContent = formatEuro(roundTrip);
+        costRoundTripCalcEl.textContent = `${km} km × ${formatEuro(rate)} × 2`;
+        resultEl.style.display = "block";
+        hideStatus();
+      });
+    });
+  </script>
+</body>
+</html>
