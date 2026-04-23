@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-  <!-- retry -->
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Fahrtkostenrechner</title>
@@ -222,10 +221,13 @@
     .winner-box .cost-mini .mini-label { font-size: 11px; text-transform: uppercase; color: var(--muted); font-weight: 600; }
     .winner-box .cost-mini .mini-value { font-size: 22px; font-weight: 700; color: var(--accent); margin-top: 2px; }
 
-    .ranking-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 14px; }
+    .ranking-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 14px; table-layout: fixed; }
     .ranking-table th, .ranking-table td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); }
     .ranking-table th { font-size: 12px; text-transform: uppercase; color: var(--muted); font-weight: 600; letter-spacing: 0.03em; }
-    .ranking-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .ranking-table th.num, .ranking-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .ranking-table col.col-plz { width: 28%; }
+    .ranking-table col.col-km { width: 14%; }
+    .ranking-table col.col-cost { width: 29%; }
     .ranking-table tr.winner { background: #f0fdf4; }
     .ranking-table tr.winner td:first-child { font-weight: 700; color: #047857; }
     .ranking-table tr.error td { color: #b91c1c; }
@@ -414,6 +416,12 @@ function doPost(e) {
 
         <h3 style="font-size:14px; margin:18px 0 6px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:0.04em;">Alle Fachkräfte (sortiert)</h3>
         <table class="ranking-table" id="rankingTable">
+          <colgroup>
+            <col class="col-plz" />
+            <col class="col-km" />
+            <col class="col-cost" />
+            <col class="col-cost" />
+          </colgroup>
           <thead>
             <tr>
               <th>PLZ</th>
