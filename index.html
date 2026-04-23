@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Fahrtkostenrechner</title>
+  <title>Fahrtkostenrechner · Company move GmbH</title>
+  <link rel="icon" type="image/png" href="https://www.company-move.de/wp-content/uploads/2024/05/cropped-CM-Logo-150x75.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;500;600;700&display=swap" />
@@ -36,16 +37,23 @@
       -webkit-font-smoothing: antialiased;
     }
     .wrap { max-width: 760px; margin: 0 auto; padding: 40px 20px 80px; }
-    header { text-align: center; margin-bottom: 32px; }
+    header {
+      text-align: center;
+      margin-bottom: 32px;
+      padding-bottom: 26px;
+      border-bottom: 3px solid var(--primary);
+    }
+    header .logo { display: inline-block; margin-bottom: 18px; }
+    header .logo img { height: 74px; width: auto; display: block; }
     header h1 {
       margin: 0 0 6px;
-      font-size: 38px;
+      font-size: 34px;
       font-weight: 700;
       color: var(--text);
       letter-spacing: 0;
       line-height: 1.15;
     }
-    header p { margin: 0; color: var(--muted); font-size: 18px; }
+    header p { margin: 0; color: var(--muted); font-size: 17px; }
 
     .card {
       background: var(--card);
@@ -179,7 +187,7 @@
       width: 100%;
       padding: 12px 14px;
       border: 1px solid var(--border);
-      border-radius: 10px;
+      border-radius: var(--radius);
       font-size: 14px;
       background: #fff;
       color: var(--text);
@@ -192,7 +200,7 @@
     textarea:focus {
       outline: none;
       border-color: var(--primary);
-      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+      box-shadow: 0 0 0 3px rgba(187, 191, 22, 0.25);
     }
 
     .winner-box {
@@ -238,8 +246,8 @@
       margin-top: 20px;
       background: #fff;
       border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 16px;
+      border-radius: var(--radius);
+      padding: 18px;
     }
     .excel-box-head {
       display: flex; justify-content: space-between; align-items: baseline;
@@ -247,28 +255,29 @@
     }
     .excel-box-head .title { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
     .excel-box-head .summe { font-size: 15px; color: var(--text); }
-    .excel-box-head .summe b { color: var(--accent); font-size: 17px; }
+    .excel-box-head .summe b { color: var(--primary-hover); font-size: 18px; }
     .excel-box textarea {
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size: 12px;
-      background: #f9fafb;
+      background: #fafafa;
       min-height: 70px;
       white-space: nowrap;
       overflow-x: auto;
     }
     .excel-box .copy-btn {
       margin-top: 10px;
-      background: var(--accent);
+      background: var(--primary);
+      color: var(--primary-text);
     }
-    .excel-box .copy-btn:hover { background: #059669; }
-    .excel-box .copy-btn.copied { background: #059669; }
+    .excel-box .copy-btn:hover { background: var(--primary-hover); }
+    .excel-box .copy-btn.copied { background: var(--primary-hover); color: #fff; }
     .excel-hint {
       font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.5;
     }
 
     .addr-resolved {
       font-size: 12px; color: var(--muted); margin-top: 6px;
-      padding: 8px 10px; background: #f9fafb; border-radius: 8px;
+      padding: 8px 10px; background: #fafafa; border-radius: var(--radius);
       border: 1px dashed var(--border);
       min-height: 18px;
     }
@@ -278,6 +287,10 @@
 <body>
   <div class="wrap">
     <header>
+      <a class="logo" href="https://www.company-move.de/" target="_blank" rel="noopener" aria-label="Company move GmbH">
+        <img src="https://www.company-move.de/wp-content/uploads/2024/05/cropped-CM-Logo-150x75.png"
+             alt="Company move GmbH" width="150" height="74" />
+      </a>
       <h1>Fahrtkostenrechner</h1>
       <p>Entfernung berechnen &amp; Fahrtkosten ermitteln</p>
     </header>
@@ -1175,6 +1188,24 @@
 
         const errorNote = errors.length > 0 ? ` \u00b7 ${errors.length} nicht gefunden` : "";
         rankingSummary.textContent = `${valid.length} Fachkraft${valid.length === 1 ? "" : "/-kräfte"} berechnet \u00b7 Rate: ${formatEuro(rate)}/km${errorNote}`;
+
+        nearestResult.style.display = "block";
+        hideNearestStatus();
+      } catch (err) {
+        showNearestStatus(err.message || "Fehler bei der Berechnung.", "error");
+      } finally {
+        findNearestBtn.disabled = false;
+      }
+    });
+
+    // kleiner Helfer, falls die vorhandene escapeHtml-Funktion nicht im Scope ist
+    function escapeHtmlPlain(s) {
+      return String(s || "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[c]));
+    }
+  </script>
+</body>
+</html>
+rate)}/km${errorNote}`;
 
         nearestResult.style.display = "block";
         hideNearestStatus();
