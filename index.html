@@ -41,7 +41,7 @@
     }
     .card h2 { margin: 0 0 16px; font-size: 18px; font-weight: 600; }
     label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
-    input[type="text"], input[type="password"], input[type="number"], input[type="search"], select {
+    input[type="text"], input[type="password"], input[type="number"], input[type="search"], input[type="date"], input[type="time"], select {
       width: 100%;
       padding: 12px 14px;
       border: 1px solid var(--border);
@@ -53,7 +53,8 @@
       font-family: inherit;
     }
     select { cursor: pointer; appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='%236b7280' d='M6 8L0 0h12z'/></svg>"); background-repeat: no-repeat; background-position: right 14px center; padding-right: 36px; }
-    input:focus, select:focus {
+    input[type="text"]:focus, input[type="password"]:focus, input[type="number"]:focus,
+    input[type="search"]:focus, input[type="date"]:focus, input[type="time"]:focus, select:focus {
       outline: none;
       border-color: var(--primary);
       box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
@@ -232,6 +233,56 @@
     .ranking-table tr.winner td:first-child { font-weight: 700; color: #047857; }
     .ranking-table tr.error td { color: #b91c1c; }
     .ranking-summary { font-size: 13px; color: var(--muted); margin-top: 10px; }
+
+    .inline-options { display: flex; gap: 16px; padding-top: 4px; flex-wrap: wrap; }
+    .inline-options label {
+      display: flex; gap: 6px; align-items: center;
+      font-weight: 400; font-size: 14px; color: var(--text); margin: 0;
+      cursor: pointer;
+    }
+    .inline-options input[type="checkbox"], .inline-options input[type="radio"] {
+      width: 16px; height: 16px; margin: 0; cursor: pointer; accent-color: var(--primary);
+    }
+
+    .excel-box {
+      margin-top: 20px;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .excel-box-head {
+      display: flex; justify-content: space-between; align-items: baseline;
+      margin-bottom: 8px; gap: 10px; flex-wrap: wrap;
+    }
+    .excel-box-head .title { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .excel-box-head .summe { font-size: 15px; color: var(--text); }
+    .excel-box-head .summe b { color: var(--accent); font-size: 17px; }
+    .excel-box textarea {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      background: #f9fafb;
+      min-height: 70px;
+      white-space: nowrap;
+      overflow-x: auto;
+    }
+    .excel-box .copy-btn {
+      margin-top: 10px;
+      background: var(--accent);
+    }
+    .excel-box .copy-btn:hover { background: #059669; }
+    .excel-box .copy-btn.copied { background: #059669; }
+    .excel-hint {
+      font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.5;
+    }
+
+    .addr-resolved {
+      font-size: 12px; color: var(--muted); margin-top: 6px;
+      padding: 8px 10px; background: #f9fafb; border-radius: 8px;
+      border: 1px dashed var(--border);
+      min-height: 18px;
+    }
+    .addr-resolved.warn { color: #b45309; background: #fffbeb; border-color: #fde68a; }
   </style>
 </head>
 <body>
@@ -269,74 +320,97 @@
             <input type="text" id="country" value="de" maxlength="2" placeholder="z. B. de, at, ch" />
           </div>
         </div>
-        <div class="field" style="position:static;">
-          <label for="webhookUrl">Google Sheets Webhook-URL</label>
-          <input type="text" id="webhookUrl" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off" data-lpignore="true" />
-          <div class="hint">
-            <span id="webhookHint">Standard: gemeinsames Team-Sheet. Du kannst hier stattdessen deine eigene Apps-Script-URL eintragen, dann werden <b>nur bei dir</b> die Daten in dein privates Sheet gespeichert.</span>
-            <div class="sheet-actions" style="margin-top:8px;">
-              <a id="resetWebhookLink" class="muted" style="display:none;">↺ Zurück zum Team-Sheet</a>
-            </div>
-          </div>
-          <details class="howto">
-            <summary>Wie richte ich das ein? (einmalig, ~2 Minuten)</summary>
-            <ol>
-              <li>Neues Google Sheet anlegen: <a href="https://sheets.new" target="_blank" rel="noopener">sheets.new</a></li>
-              <li>Menü: <code>Erweiterungen → Apps Script</code></li>
-              <li>Gesamten Code löschen, folgenden einfügen:
-<pre>function doGet() {
-  const sheets = SpreadsheetApp.getActiveSpreadsheet()
-    .getSheets().map(s =&gt; s.getName());
-  return ContentService.createTextOutput(JSON.stringify({sheets}))
-    .setMimeType(ContentService.MimeType.JSON);
-}
-
-function doPost(e) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const data = JSON.parse(e.postData.contents);
-  const name = (data.sheetName || "Tabelle1").toString().slice(0, 100);
-  let sheet = ss.getSheetByName(name) || ss.insertSheet(name);
-  if (sheet.getLastRow() === 0) {
-    sheet.appendRow(["Datum","Start","Ziel","km","€/km","Einfach (€)","Hin+Rück (€)"]);
-  }
-  sheet.appendRow([
-    new Date(), data.origin, data.destination,
-    data.km, data.rate, data.oneWay, data.roundTrip
-  ]);
-  return ContentService.createTextOutput(JSON.stringify({ok:true, sheet:name}))
-    .setMimeType(ContentService.MimeType.JSON);
-}</pre>
-              <div class="hint" style="margin-top:6px;"><b>Wichtig:</b> Wenn du das Skript änderst, nochmal <code>Bereitstellen → Bereitstellung verwalten → Bearbeiten → Neue Version → Bereitstellen</code>.</div>
-              </li>
-              <li>Speichern (Disketten-Symbol), Projekt beliebig benennen.</li>
-              <li>Oben rechts: <code>Bereitstellen → Neue Bereitstellung</code></li>
-              <li>Typ: <b>Web-App</b>. Zugriff: <b>Jeder</b>. Ausführen als: <b>Ich selbst</b>.</li>
-              <li>Berechtigungen bestätigen. Die angezeigte <b>Web-App-URL</b> oben einfügen und Einstellungen zuklappen.</li>
-            </ol>
-          </details>
+        <div class="field">
+          <label for="bueroAddr">Büro-Adresse (für „B")</label>
+          <input type="search" id="bueroAddr" name="fk_buero_nosave" placeholder="Adresse eingeben..."
+                 autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                 data-lpignore="true" data-form-type="other" data-1p-ignore="true" />
+          <div class="ac-dropdown" id="bueroDropdown"></div>
+        </div>
+        <div class="field">
+          <label for="wohnsitzAddr">Wohnsitz-Adresse (für „W")</label>
+          <input type="search" id="wohnsitzAddr" name="fk_wohn_nosave" placeholder="Adresse eingeben..."
+                 autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                 data-lpignore="true" data-form-type="other" data-1p-ignore="true" />
+          <div class="ac-dropdown" id="wohnsitzDropdown"></div>
         </div>
         <button id="changeKeyBtn" class="settings-toggle" type="button" style="margin-top:4px;">API-Key ändern</button>
-        <div class="hint">Tipp: Leeres Land-Feld = weltweite Suche.</div>
+        <div class="hint">Tipp: Leeres Land-Feld = weltweite Suche. Büro- und Wohnsitz-Adresse werden nur lokal im Browser gespeichert.</div>
       </div>
 
       <form autocomplete="off" onsubmit="return false;">
-        <div class="field">
-          <label for="origin">Startadresse</label>
-          <input type="search" id="origin" name="fk_origin_nosave" placeholder="Adresse oder PLZ eingeben..."
-                 autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-                 data-lpignore="true" data-form-type="other" data-1p-ignore="true" />
-          <div class="ac-dropdown" id="originDropdown"></div>
+        <div class="row">
+          <div class="field" style="position:static;">
+            <label for="datum">Datum</label>
+            <input type="date" id="datum" />
+          </div>
+          <div class="field" style="position:static;">
+            <label for="startTyp">Start</label>
+            <select id="startTyp">
+              <option value="B">B – Büro</option>
+              <option value="W">W – Wohnsitz</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field" style="position:static;">
+            <label for="reiseantritt">Reiseantritt</label>
+            <input type="time" id="reiseantritt" />
+          </div>
+          <div class="field" style="position:static;">
+            <label for="reiseende">Reiseende</label>
+            <input type="time" id="reiseende" />
+          </div>
         </div>
         <div class="field">
-          <label for="destination">Zieladresse</label>
+          <label for="destination">Ziel-Adresse</label>
           <input type="search" id="destination" name="fk_dest_nosave" placeholder="Adresse oder PLZ eingeben..."
                  autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
                  data-lpignore="true" data-form-type="other" data-1p-ignore="true" />
           <div class="ac-dropdown" id="destDropdown"></div>
         </div>
+        <div class="row">
+          <div class="field" style="position:static;">
+            <label for="unternehmer">Unternehmer / Firma</label>
+            <input type="text" id="unternehmer" placeholder="z. B. Mustermann GmbH" autocomplete="off" />
+          </div>
+          <div class="field" style="position:static;">
+            <label for="zweck">Zweck</label>
+            <input type="text" id="zweck" placeholder="z. B. Kundentermin" autocomplete="off" />
+          </div>
+        </div>
+        <div class="row">
+          <div class="field" style="position:static;">
+            <label for="verpflegung">Verpflegungspauschale</label>
+            <select id="verpflegung">
+              <option value="0">0 € (unter 8 h)</option>
+              <option value="14">14 € (8–24 h)</option>
+              <option value="28">28 € (über 24 h)</option>
+            </select>
+          </div>
+          <div class="field" style="position:static;">
+            <label for="nebenkosten">Nebenkosten (€)</label>
+            <input type="number" id="nebenkosten" value="0" step="0.01" min="0" />
+          </div>
+        </div>
+        <div class="field" style="position:static;">
+          <label>Abzug für gestellte Mahlzeiten</label>
+          <div class="inline-options">
+            <label><input type="checkbox" id="abzugFrueh" /> Frühstück (−5,60 €)</label>
+            <label><input type="checkbox" id="abzugMittag" /> Mittag (−11,20 €)</label>
+            <label><input type="checkbox" id="abzugAbend" /> Abendbrot (−11,20 €)</label>
+          </div>
+        </div>
+        <div class="field" style="position:static;">
+          <label>Fahrtkosten-Grundlage</label>
+          <div class="inline-options">
+            <label><input type="radio" name="fahrtmodus" value="einfach" /> Einfache Fahrt</label>
+            <label><input type="radio" name="fahrtmodus" value="rueck" checked /> Hin- &amp; Rückfahrt</label>
+          </div>
+        </div>
       </form>
 
-      <button id="calcBtn">Entfernung &amp; Kosten berechnen</button>
+      <button id="calcBtn">Berechnen &amp; Excel-Zeile erzeugen</button>
       <div id="status" class="status" style="display:none;"></div>
 
       <div class="result" id="result" style="display:none;">
@@ -354,16 +428,17 @@ function doPost(e) {
             <div class="sub" id="costRoundTripCalc"></div>
           </div>
         </div>
-        <div class="field" id="sheetPicker" style="display:none; position:static; margin-top: 18px;">
-          <label for="sheetSelect">Ziel-Tab im Google Sheet</label>
-          <select id="sheetSelect"><option>Tabelle1</option></select>
-          <div class="sheet-actions">
-            <a id="newSheetLink">+ Neuer Tab</a>
-            <a id="refreshSheetsLink" class="muted">↻ Liste aktualisieren</a>
+
+        <div class="excel-box">
+          <div class="excel-box-head">
+            <span class="title">Excel-Zeile (Tab-getrennt)</span>
+            <span class="summe">Summe: <b id="summeVal">–</b></span>
           </div>
+          <textarea id="excelLine" readonly rows="2" spellcheck="false"></textarea>
+          <button id="copyExcelBtn" class="copy-btn">📋 In Zwischenablage kopieren</button>
+          <div class="excel-hint">Einfach in deine Excel-Tabelle einfügen – die Tabs verteilen die Werte automatisch auf die richtigen Spalten.</div>
+          <div id="copyStatus" class="status" style="display:none; margin-top:10px;"></div>
         </div>
-        <button id="saveSheetBtn" class="save-btn" style="display:none;">In Google Sheet speichern</button>
-        <div id="saveStatus" class="status" style="display:none; margin-top:10px;"></div>
       </div>
     </div>
 
@@ -443,20 +518,18 @@ function doPost(e) {
     // ============================================================
     // TEAM-KONFIGURATION – hier einmalig eintragen, dann teilen
     // ============================================================
-    // Wenn ein API-Key hier eingetragen ist, wird er fix verwendet
-    // (Key-Abfrage verschwindet). Leer lassen -> Benutzer wird gefragt.
-    // WICHTIG: Diesen Key in Google Cloud Console per HTTP-Referrer
-    // auf deine GitHub-Pages-Domain beschränken!
-    const EMBEDDED_API_KEY = "AIzaSyA14WNfD_A0X4nw8WcfTf_FAXTlDrxdUQM"; // z.B. "AIzaSy..."
-    // Gemeinsame Google-Sheets-Webhook-URL für das ganze Team (optional)
-    const EMBEDDED_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxbijNrbAoghHITUDvpgqi3LXz-X2O3-qr-2n4QZYkH0k92Z3fC2T1eloD84WGWreCU/exec"; // z.B. "https://script.google.com/macros/s/.../exec"
+    const EMBEDDED_API_KEY = "AIzaSyA14WNfD_A0X4nw8WcfTf_FAXTlDrxdUQM";
     // ============================================================
 
     const LS_KEY = "fahrtkosten_gmaps_key";
     const LS_RATE = "fahrtkosten_rate";
     const LS_COUNTRY = "fahrtkosten_country";
-    const LS_WEBHOOK = "fahrtkosten_webhook";
-    const LS_SHEETNAME = "fahrtkosten_sheetname";
+    const LS_BUERO = "fahrtkosten_buero_addr";
+    const LS_WOHNSITZ = "fahrtkosten_wohnsitz_addr";
+    const LS_UNTERNEHMER = "fahrtkosten_last_unternehmer";
+    const LS_ZWECK = "fahrtkosten_last_zweck";
+    const LS_STARTTYP = "fahrtkosten_last_starttyp";
+    const LS_FAHRTMODUS = "fahrtkosten_last_fahrtmodus";
 
     const $ = (id) => document.getElementById(id);
     const apiKeyInput = $("apiKey");
@@ -470,10 +543,23 @@ function doPost(e) {
     const changeKeyBtn = $("changeKeyBtn");
     const rateInput = $("rate");
     const countryInput = $("country");
-    const originInput = $("origin");
+    const bueroAddrInput = $("bueroAddr");
+    const bueroDropdown = $("bueroDropdown");
+    const wohnsitzAddrInput = $("wohnsitzAddr");
+    const wohnsitzDropdown = $("wohnsitzDropdown");
+    const datumInput = $("datum");
+    const reiseantrittInput = $("reiseantritt");
+    const reiseendeInput = $("reiseende");
+    const startTypSelect = $("startTyp");
     const destInput = $("destination");
-    const originDropdown = $("originDropdown");
     const destDropdown = $("destDropdown");
+    const unternehmerInput = $("unternehmer");
+    const zweckInput = $("zweck");
+    const verpflegungSelect = $("verpflegung");
+    const nebenkostenInput = $("nebenkosten");
+    const abzugFruehEl = $("abzugFrueh");
+    const abzugMittagEl = $("abzugMittag");
+    const abzugAbendEl = $("abzugAbend");
     const calcBtn = $("calcBtn");
     const statusEl = $("status");
     const resultEl = $("result");
@@ -483,16 +569,11 @@ function doPost(e) {
     const costOneWayCalcEl = $("costOneWayCalc");
     const costRoundTripEl = $("costRoundTrip");
     const costRoundTripCalcEl = $("costRoundTripCalc");
-    const webhookInput = $("webhookUrl");
-    const saveSheetBtn = $("saveSheetBtn");
-    const saveStatusEl = $("saveStatus");
-    const sheetPicker = $("sheetPicker");
-    const sheetSelect = $("sheetSelect");
-    const newSheetLink = $("newSheetLink");
-    const refreshSheetsLink = $("refreshSheetsLink");
-    const resetWebhookLink = $("resetWebhookLink");
-    let lastCalculation = null;
-    let loadedSheetNames = [];
+    const excelLineEl = $("excelLine");
+    const copyExcelBtn = $("copyExcelBtn");
+    const copyStatusEl = $("copyStatus");
+    const summeValEl = $("summeVal");
+    let verpflegungAutoSet = true; // solange true, Vorschlag aus Dauer überschreiben
 
     let autocompleteService = null;
     let distanceService = null;
@@ -505,84 +586,59 @@ function doPost(e) {
     if (savedCountry !== null) countryInput.value = savedCountry;
     rateInput.addEventListener("change", () => localStorage.setItem(LS_RATE, rateInput.value));
     countryInput.addEventListener("change", () => localStorage.setItem(LS_COUNTRY, countryInput.value));
-    // Effektive URL: persönliche Override (localStorage) > Team (EMBEDDED)
-    const savedWebhook = localStorage.getItem(LS_WEBHOOK);
-    function updateResetLink() {
-      const hasOverride = !!localStorage.getItem(LS_WEBHOOK);
-      resetWebhookLink.style.display = (EMBEDDED_WEBHOOK_URL && hasOverride) ? "inline" : "none";
+
+    // Büro + Wohnsitz aus localStorage laden
+    bueroAddrInput.value = localStorage.getItem(LS_BUERO) || "";
+    wohnsitzAddrInput.value = localStorage.getItem(LS_WOHNSITZ) || "";
+    bueroAddrInput.addEventListener("change", () => localStorage.setItem(LS_BUERO, bueroAddrInput.value.trim()));
+    wohnsitzAddrInput.addEventListener("change", () => localStorage.setItem(LS_WOHNSITZ, wohnsitzAddrInput.value.trim()));
+
+    // Letzte Werte für Komfort-Felder
+    unternehmerInput.value = localStorage.getItem(LS_UNTERNEHMER) || "";
+    zweckInput.value = localStorage.getItem(LS_ZWECK) || "";
+    unternehmerInput.addEventListener("change", () => localStorage.setItem(LS_UNTERNEHMER, unternehmerInput.value.trim()));
+    zweckInput.addEventListener("change", () => localStorage.setItem(LS_ZWECK, zweckInput.value.trim()));
+
+    // Start-Typ und Fahrtmodus merken
+    const savedStartTyp = localStorage.getItem(LS_STARTTYP);
+    if (savedStartTyp === "B" || savedStartTyp === "W") startTypSelect.value = savedStartTyp;
+    startTypSelect.addEventListener("change", () => localStorage.setItem(LS_STARTTYP, startTypSelect.value));
+
+    const savedFahrtmodus = localStorage.getItem(LS_FAHRTMODUS);
+    if (savedFahrtmodus === "einfach" || savedFahrtmodus === "rueck") {
+      const radio = document.querySelector(`input[name="fahrtmodus"][value="${savedFahrtmodus}"]`);
+      if (radio) radio.checked = true;
     }
-    if (savedWebhook) {
-      webhookInput.value = savedWebhook;
-    } else if (EMBEDDED_WEBHOOK_URL) {
-      webhookInput.value = EMBEDDED_WEBHOOK_URL;
+    document.querySelectorAll('input[name="fahrtmodus"]').forEach(r => {
+      r.addEventListener("change", () => localStorage.setItem(LS_FAHRTMODUS, r.value));
+    });
+
+    // Datum auf heute vorbelegen
+    (function initDatum() {
+      const d = new Date();
+      const iso = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+      datumInput.value = iso;
+    })();
+
+    // Verpflegungspauschale automatisch aus Reisedauer vorschlagen
+    function updateVerpflegungSuggestion() {
+      if (!verpflegungAutoSet) return;
+      const start = reiseantrittInput.value;
+      const ende = reiseendeInput.value;
+      if (!start || !ende) return;
+      const [sh, sm] = start.split(":").map(Number);
+      const [eh, em] = ende.split(":").map(Number);
+      let minutes = (eh * 60 + em) - (sh * 60 + sm);
+      if (minutes < 0) minutes += 24 * 60; // Ende nach Mitternacht
+      const hours = minutes / 60;
+      let val = "0";
+      if (hours >= 24) val = "28";
+      else if (hours >= 8) val = "14";
+      verpflegungSelect.value = val;
     }
-    updateResetLink();
-
-    webhookInput.addEventListener("change", () => {
-      const v = webhookInput.value.trim();
-      // Wenn User die Team-URL wieder eintippt, Override entfernen
-      if (!v || v === EMBEDDED_WEBHOOK_URL) {
-        localStorage.removeItem(LS_WEBHOOK);
-        if (!v && EMBEDDED_WEBHOOK_URL) webhookInput.value = EMBEDDED_WEBHOOK_URL;
-      } else {
-        localStorage.setItem(LS_WEBHOOK, v);
-      }
-      updateResetLink();
-      // Tab-Auswahl der alten Sheet vergessen (passt ja nicht mehr)
-      localStorage.removeItem(LS_SHEETNAME);
-      loadSheetList();
-    });
-
-    resetWebhookLink.addEventListener("click", () => {
-      localStorage.removeItem(LS_WEBHOOK);
-      localStorage.removeItem(LS_SHEETNAME);
-      webhookInput.value = EMBEDDED_WEBHOOK_URL || "";
-      updateResetLink();
-      loadSheetList();
-    });
-
-    async function loadSheetList() {
-      const url = webhookInput.value.trim();
-      if (!url) { sheetPicker.style.display = "none"; return; }
-      sheetPicker.style.display = "block";
-      refreshSheetsLink.textContent = "Lade...";
-      try {
-        const res = await fetch(url, { method: "GET", redirect: "follow" });
-        const data = await res.json();
-        const names = Array.isArray(data.sheets) ? data.sheets : [];
-        if (names.length > 0) {
-          loadedSheetNames = names;
-          const saved = localStorage.getItem(LS_SHEETNAME);
-          sheetSelect.innerHTML = names.map(n => `<option value="${n.replace(/"/g,'&quot;')}"${n === saved ? " selected" : ""}>${n}</option>`).join("");
-        }
-      } catch (e) {
-        // Fehler ignorieren – Dropdown bleibt mit Default-Wert
-        console.warn("Konnte Sheet-Liste nicht laden:", e);
-      } finally {
-        refreshSheetsLink.textContent = "↻ Liste aktualisieren";
-      }
-    }
-
-    sheetSelect.addEventListener("change", () => {
-      localStorage.setItem(LS_SHEETNAME, sheetSelect.value);
-    });
-
-    newSheetLink.addEventListener("click", () => {
-      const name = (prompt("Name für neuen Tab:") || "").trim();
-      if (!name) return;
-      // Wenn Name schon vorhanden, einfach auswählen
-      const existing = Array.from(sheetSelect.options).find(o => o.value === name);
-      if (existing) { sheetSelect.value = name; }
-      else {
-        const opt = document.createElement("option");
-        opt.value = name; opt.textContent = name + " (neu)";
-        sheetSelect.appendChild(opt);
-        sheetSelect.value = name;
-      }
-      localStorage.setItem(LS_SHEETNAME, name);
-    });
-
-    refreshSheetsLink.addEventListener("click", loadSheetList);
+    reiseantrittInput.addEventListener("change", updateVerpflegungSuggestion);
+    reiseendeInput.addEventListener("change", updateVerpflegungSuggestion);
+    verpflegungSelect.addEventListener("change", () => { verpflegungAutoSet = false; });
 
     settingsToggle.addEventListener("click", () => settings.classList.toggle("open"));
     changeKeyBtn.addEventListener("click", () => {
@@ -628,9 +684,10 @@ function doPost(e) {
       autocompleteService = new google.maps.places.AutocompleteService();
       distanceService = new google.maps.DistanceMatrixService();
       sessionToken = new google.maps.places.AutocompleteSessionToken();
-      attachAutocomplete(originInput, originDropdown);
       attachAutocomplete(destInput, destDropdown);
-      // Einsatzort-Feld (neues Feature) ebenfalls mit Autocomplete ausstatten
+      attachAutocomplete(bueroAddrInput, bueroDropdown);
+      attachAutocomplete(wohnsitzAddrInput, wohnsitzDropdown);
+      // Einsatzort-Feld (zweites Feature) ebenfalls mit Autocomplete ausstatten
       const einsatzortEl = document.getElementById("einsatzort");
       const einsatzortDd = document.getElementById("einsatzortDropdown");
       if (einsatzortEl && einsatzortDd && !einsatzortEl.dataset.acReady) {
@@ -762,8 +819,7 @@ function doPost(e) {
         apiKeyCard.style.display = "none";
         mainCard.style.display = "block";
         nearestCard.style.display = "block";
-        originInput.focus();
-        loadSheetList();
+        destInput.focus();
       } catch (err) {
         showKeyStatus("Fehler beim Laden: " + err.message, "error");
       } finally {
@@ -780,7 +836,7 @@ function doPost(e) {
         // "API-Key ändern"-Button ausblenden, damit Kollegen nichts kaputt machen
         if (changeKeyBtn) changeKeyBtn.style.display = "none";
         loadGoogleMaps(EMBEDDED_API_KEY)
-          .then(() => { initServices(); originInput.focus(); loadSheetList(); })
+          .then(() => { initServices(); destInput.focus(); })
           .catch(err => {
             apiKeyCard.style.display = "block";
             mainCard.style.display = "none";
@@ -800,11 +856,30 @@ function doPost(e) {
     function formatEuro(value) {
       return value.toLocaleString("de-DE", { style: "currency", currency: "EUR", minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
+    // Zahl mit Komma-Dezimaltrennzeichen (für Excel im DE-Format)
+    function formatNumDE(n, decimals = 2) {
+      if (n === "" || n === null || n === undefined) return "";
+      return Number(n).toFixed(decimals).replace(".", ",");
+    }
+    // ISO-Datum (yyyy-mm-dd) -> dd.mm.yyyy
+    function formatDateDE(iso) {
+      if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso || "";
+      const [y, m, d] = iso.split("-");
+      return `${d}.${m}.${y}`;
+    }
 
     calcBtn.addEventListener("click", () => {
-      const origin = originInput.value.trim();
+      const starttyp = startTypSelect.value; // "B" oder "W"
+      const origin = (starttyp === "B" ? bueroAddrInput.value : wohnsitzAddrInput.value).trim();
       const destination = destInput.value.trim();
-      if (!origin || !destination) { showStatus("Bitte beide Adressen eingeben.", "error"); return; }
+
+      if (!origin) {
+        showStatus(`Bitte erst die ${starttyp === "B" ? "Büro" : "Wohnsitz"}-Adresse in den Einstellungen hinterlegen.`, "error");
+        settings.classList.add("open");
+        return;
+      }
+      if (!destination) { showStatus("Bitte eine Ziel-Adresse eingeben.", "error"); return; }
+
       const rate = parseFloat((rateInput.value || "0").replace(",", "."));
       if (isNaN(rate) || rate < 0) { showStatus("Bitte eine gültige Kilometerpauschale angeben.", "error"); return; }
       if (!distanceService) { showStatus("Google Maps noch nicht bereit.", "error"); return; }
@@ -835,87 +910,100 @@ function doPost(e) {
         }
 
         const meters = elem.distance.value;
-        const km = Math.ceil(meters / 1000);
-        const oneWay = km * rate;
-        const roundTrip = km * rate * 2;
+        const kmEinfach = Math.ceil(meters / 1000);
+        const oneWay = kmEinfach * rate;
+        const roundTrip = kmEinfach * rate * 2;
 
-        kmEl.textContent = km.toLocaleString("de-DE");
+        // Gewählter Modus: einfache oder Hin+Rück-Fahrt
+        const fahrtmodus = document.querySelector('input[name="fahrtmodus"]:checked')?.value || "rueck";
+        const gefahreneKm = fahrtmodus === "rueck" ? kmEinfach * 2 : kmEinfach;
+        const fahrtkosten = gefahreneKm * rate;
+
+        // Verpflegung + Abzüge
+        const verpflegung = parseFloat(verpflegungSelect.value) || 0;
+        const abzugFrueh = abzugFruehEl.checked ? 5.60 : 0;
+        const abzugMittag = abzugMittagEl.checked ? 11.20 : 0;
+        const abzugAbend = abzugAbendEl.checked ? 11.20 : 0;
+        const nebenkosten = parseFloat((nebenkostenInput.value || "0").replace(",", ".")) || 0;
+
+        const summe = verpflegung - abzugFrueh - abzugMittag - abzugAbend + fahrtkosten + nebenkosten;
+
+        // Ergebnis-Anzeige
+        kmEl.textContent = kmEinfach.toLocaleString("de-DE");
         distanceLabelEl.textContent = `${response.originAddresses[0]} → ${response.destinationAddresses[0]} (${elem.distance.text}, aufgerundet)`;
         costOneWayEl.textContent = formatEuro(oneWay);
-        costOneWayCalcEl.textContent = `${km} km × ${formatEuro(rate)}`;
+        costOneWayCalcEl.textContent = `${kmEinfach} km × ${formatEuro(rate)}`;
         costRoundTripEl.textContent = formatEuro(roundTrip);
-        costRoundTripCalcEl.textContent = `${km} km × ${formatEuro(rate)} × 2`;
+        costRoundTripCalcEl.textContent = `${kmEinfach} km × ${formatEuro(rate)} × 2`;
+
+        // Excel-Zeile bauen (16 Spalten, Tab-getrennt, leere Spalte 8 zwischen Zweck und Verpflegung)
+        const col = {
+          datum: formatDateDE(datumInput.value),
+          reiseantritt: reiseantrittInput.value || "",     // HH:MM
+          reiseende: reiseendeInput.value || "",
+          start: starttyp,                                  // "B" oder "W"
+          ziel: response.destinationAddresses[0] || destination,
+          unternehmer: unternehmerInput.value.trim(),
+          zweck: zweckInput.value.trim(),
+          spacer: "",                                       // leere 8. Spalte
+          verpflegung: verpflegung > 0 ? formatNumDE(verpflegung) : "",
+          abzFrueh: abzugFrueh > 0 ? "-" + formatNumDE(abzugFrueh) : "",
+          abzMittag: abzugMittag > 0 ? "-" + formatNumDE(abzugMittag) : "",
+          abzAbend: abzugAbend > 0 ? "-" + formatNumDE(abzugAbend) : "",
+          km: String(gefahreneKm),
+          fahrtkosten: formatNumDE(fahrtkosten),
+          nebenkosten: formatNumDE(nebenkosten),
+          summe: formatNumDE(summe)
+        };
+        const excelLine = [
+          col.datum, col.reiseantritt, col.reiseende, col.start,
+          col.ziel, col.unternehmer, col.zweck, col.spacer,
+          col.verpflegung, col.abzFrueh, col.abzMittag, col.abzAbend,
+          col.km, col.fahrtkosten, col.nebenkosten, col.summe
+        ].join("\t");
+
+        excelLineEl.value = excelLine;
+        summeValEl.textContent = formatEuro(summe);
+
+        // Letzte Werte merken
+        if (col.unternehmer) localStorage.setItem(LS_UNTERNEHMER, col.unternehmer);
+        if (col.zweck) localStorage.setItem(LS_ZWECK, col.zweck);
+
         resultEl.style.display = "block";
         hideStatus();
 
-        lastCalculation = {
-          origin: response.originAddresses[0],
-          destination: response.destinationAddresses[0],
-          km: km,
-          rate: rate,
-          oneWay: Number(oneWay.toFixed(2)),
-          roundTrip: Number(roundTrip.toFixed(2))
-        };
-        saveSheetBtn.classList.remove("saved");
-        saveSheetBtn.textContent = "In Google Sheet speichern";
-        saveSheetBtn.disabled = false;
-        const hasWebhook = !!webhookInput.value.trim();
-        saveSheetBtn.style.display = hasWebhook ? "block" : "none";
-        sheetPicker.style.display = hasWebhook ? "block" : "none";
-        saveStatusEl.style.display = "none";
+        // Copy-Button zurücksetzen
+        copyExcelBtn.classList.remove("copied");
+        copyExcelBtn.textContent = "📋 In Zwischenablage kopieren";
+        copyStatusEl.style.display = "none";
+
+        // Sanft runterscrollen
+        resultEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
       });
     });
 
-    saveSheetBtn.addEventListener("click", async () => {
-      const url = webhookInput.value.trim();
-      if (!url) {
-        saveStatusEl.textContent = "Bitte zuerst Webhook-URL in den Einstellungen hinterlegen.";
-        saveStatusEl.className = "status error";
-        saveStatusEl.style.display = "block";
-        return;
-      }
-      if (!lastCalculation) return;
-      if (!/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec/.test(url)) {
-        saveStatusEl.textContent = "URL sieht nicht nach einer Apps-Script-Web-App aus (sollte mit https://script.google.com/macros/s/... enden).";
-        saveStatusEl.className = "status error";
-        saveStatusEl.style.display = "block";
-        return;
-      }
-
-      saveSheetBtn.disabled = true;
-      saveStatusEl.textContent = "Sende an Google Sheet...";
-      saveStatusEl.className = "status loading";
-      saveStatusEl.style.display = "block";
-
-      const payload = { ...lastCalculation, sheetName: sheetSelect.value || "Tabelle1" };
-
+    copyExcelBtn.addEventListener("click", async () => {
+      const text = excelLineEl.value;
+      if (!text) return;
       try {
-        // Content-Type text/plain vermeidet CORS-Preflight bei Apps Script
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 20000);
-        const res = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: JSON.stringify(payload),
-          redirect: "follow",
-          signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-        let ok = res.ok;
-        try {
-          const json = await res.json();
-          if (json && json.ok === false) ok = false;
-        } catch (_) { /* Antwort ist kein JSON – ignorieren */ }
-        if (!ok) throw new Error("Server antwortete mit Status " + res.status);
-
-        saveStatusEl.textContent = `✓ In Tab „${payload.sheetName}" gespeichert.`;
-        saveStatusEl.className = "status info";
-        saveSheetBtn.classList.add("saved");
-        saveSheetBtn.textContent = "✓ Gespeichert";
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          // Fallback für unsichere Kontexte (z. B. file://)
+          excelLineEl.focus();
+          excelLineEl.select();
+          document.execCommand("copy");
+          excelLineEl.setSelectionRange(0, 0);
+        }
+        copyExcelBtn.classList.add("copied");
+        copyExcelBtn.textContent = "✓ Kopiert – jetzt in Excel einfügen";
+        copyStatusEl.textContent = "Einfach in die nächste leere Zeile deines Excel-Blatts einfügen (Strg+V).";
+        copyStatusEl.className = "status info";
+        copyStatusEl.style.display = "block";
       } catch (err) {
-        saveStatusEl.textContent = "Fehler beim Senden: " + err.message + " — Prüfe die Apps-Script-URL und die Bereitstellungs-Einstellungen (Zugriff: Jeder).";
-        saveStatusEl.className = "status error";
-        saveSheetBtn.disabled = false;
+        copyStatusEl.textContent = "Kopieren fehlgeschlagen: " + err.message + ". Du kannst den Text oben manuell markieren und kopieren.";
+        copyStatusEl.className = "status error";
+        copyStatusEl.style.display = "block";
       }
     });
 
@@ -1081,7 +1169,7 @@ function doPost(e) {
           const oneWay = r.km * rate;
           const roundTrip = r.km * rate * 2;
           rows.push(`<tr class="${idx === 0 ? "winner" : ""}">
-            <td>${escapeHtmlPlain(r.plz)}${idx === 0 ? " ★" : ""}</td>
+            <td>${escapeHtmlPlain(r.plz)}${idx === 0 ? " \u2605" : ""}</td>
             <td class="num">${r.km}</td>
             <td class="num">${formatEuro(oneWay)}</td>
             <td class="num">${formatEuro(roundTrip)}</td>
@@ -1095,8 +1183,8 @@ function doPost(e) {
         });
         rankingTbody.innerHTML = rows.join("");
 
-        const errorNote = errors.length > 0 ? ` · ${errors.length} nicht gefunden` : "";
-        rankingSummary.textContent = `${valid.length} Fachkraft${valid.length === 1 ? "" : "/-kräfte"} berechnet · Rate: ${formatEuro(rate)}/km${errorNote}`;
+        const errorNote = errors.length > 0 ? ` \u00b7 ${errors.length} nicht gefunden` : "";
+        rankingSummary.textContent = `${valid.length} Fachkraft${valid.length === 1 ? "" : "/-kräfte"} berechnet \u00b7 Rate: ${formatEuro(rate)}/km${errorNote}`;
 
         nearestResult.style.display = "block";
         hideNearestStatus();
