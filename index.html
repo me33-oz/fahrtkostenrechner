@@ -183,6 +183,52 @@
     .footer-note { text-align: center; color: var(--muted); font-size: 12px; margin-top: 20px; }
     .hint { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
     .hint a { color: var(--primary); }
+
+    textarea {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-size: 14px;
+      background: #fff;
+      color: var(--text);
+      transition: border-color .15s, box-shadow .15s;
+      font-family: inherit;
+      resize: vertical;
+      min-height: 110px;
+      line-height: 1.5;
+    }
+    textarea:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+    }
+
+    .winner-box {
+      background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+      border: 2px solid var(--accent);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 16px;
+      text-align: center;
+    }
+    .winner-box .label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #047857; font-weight: 700; margin-bottom: 8px; }
+    .winner-box .plz { font-size: 34px; font-weight: 700; color: var(--text); margin: 0 0 4px; letter-spacing: -0.02em; }
+    .winner-box .sub { font-size: 14px; color: var(--muted); margin-bottom: 14px; }
+    .winner-box .costs-inline { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+    @media (max-width: 560px) { .winner-box .costs-inline { grid-template-columns: 1fr; } }
+    .winner-box .cost-mini { background: white; border-radius: 8px; padding: 12px; border: 1px solid #a7f3d0; }
+    .winner-box .cost-mini .mini-label { font-size: 11px; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+    .winner-box .cost-mini .mini-value { font-size: 22px; font-weight: 700; color: var(--accent); margin-top: 2px; }
+
+    .ranking-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 14px; }
+    .ranking-table th, .ranking-table td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); }
+    .ranking-table th { font-size: 12px; text-transform: uppercase; color: var(--muted); font-weight: 600; letter-spacing: 0.03em; }
+    .ranking-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .ranking-table tr.winner { background: #f0fdf4; }
+    .ranking-table tr.winner td:first-child { font-weight: 700; color: #047857; }
+    .ranking-table tr.error td { color: #b91c1c; }
+    .ranking-summary { font-size: 13px; color: var(--muted); margin-top: 10px; }
   </style>
 </head>
 <body>
@@ -221,10 +267,13 @@
           </div>
         </div>
         <div class="field" style="position:static;">
-          <label for="webhookUrl">Google Sheets Webhook-URL (optional)</label>
+          <label for="webhookUrl">Google Sheets Webhook-URL</label>
           <input type="text" id="webhookUrl" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off" data-lpignore="true" />
           <div class="hint">
-            URL deines Google-Apps-Script-Web-Apps. Sobald hinterlegt, erscheint nach der Berechnung ein Button "In Google Sheet speichern".
+            <span id="webhookHint">Standard: gemeinsames Team-Sheet. Du kannst hier stattdessen deine eigene Apps-Script-URL eintragen, dann werden <b>nur bei dir</b> die Daten in dein privates Sheet gespeichert.</span>
+            <div class="sheet-actions" style="margin-top:8px;">
+              <a id="resetWebhookLink" class="muted" style="display:none;">↺ Zurück zum Team-Sheet</a>
+            </div>
           </div>
           <details class="howto">
             <summary>Wie richte ich das ein? (einmalig, ~2 Minuten)</summary>
@@ -315,6 +364,69 @@ function doPost(e) {
       </div>
     </div>
 
+    <div class="card" id="nearestCard" style="display:none;">
+      <h2>Nächste Fachkraft finden</h2>
+      <p class="hint" style="margin-top:-8px; margin-bottom:14px;">
+        Einsatzort eintragen und PLZs aller Fachkräfte einfügen — die App findet automatisch die nächste Fachkraft und berechnet die Fahrtkosten (Hin- &amp; Rückfahrt).
+      </p>
+
+      <form autocomplete="off" onsubmit="return false;">
+        <div class="field">
+          <label for="einsatzort">Einsatzort (PLZ oder Adresse)</label>
+          <input type="search" id="einsatzort" name="fk_einsatz_nosave" placeholder="z. B. 10115 oder vollständige Adresse..."
+                 autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                 data-lpignore="true" data-form-type="other" data-1p-ignore="true" />
+          <div class="ac-dropdown" id="einsatzortDropdown"></div>
+        </div>
+
+        <div class="field" style="position:static;">
+          <label for="fachkraftPlz">PLZs der Fachkräfte</label>
+          <textarea id="fachkraftPlz" placeholder="Eine PLZ pro Zeile, oder durch Komma/Semikolon getrennt. Beispiel:&#10;10115&#10;80331&#10;50667, 20095; 60311"></textarea>
+          <div class="hint">Mehrere PLZs werden automatisch erkannt (Zeile, Komma, Semikolon, Leerzeichen).</div>
+        </div>
+
+        <div class="field" style="position:static;">
+          <label for="nearestRate">Kilometerpauschale (€ pro km)</label>
+          <input type="number" id="nearestRate" value="0.30" step="0.01" min="0" />
+        </div>
+      </form>
+
+      <button id="findNearestBtn">Nächste Fachkraft berechnen</button>
+      <div id="nearestStatus" class="status" style="display:none;"></div>
+
+      <div class="result" id="nearestResult" style="display:none;">
+        <div class="winner-box" id="winnerBox">
+          <div class="label">Nächste Fachkraft</div>
+          <p class="plz" id="winnerPlz">–</p>
+          <div class="sub" id="winnerSub"></div>
+          <div class="costs-inline">
+            <div class="cost-mini">
+              <div class="mini-label">Einfache Fahrt</div>
+              <div class="mini-value" id="winnerOneWay">–</div>
+            </div>
+            <div class="cost-mini">
+              <div class="mini-label">Hin- &amp; Rückfahrt</div>
+              <div class="mini-value" id="winnerRoundTrip">–</div>
+            </div>
+          </div>
+        </div>
+
+        <h3 style="font-size:14px; margin:18px 0 6px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:0.04em;">Alle Fachkräfte (sortiert)</h3>
+        <table class="ranking-table" id="rankingTable">
+          <thead>
+            <tr>
+              <th>PLZ</th>
+              <th class="num">km</th>
+              <th class="num">Einfach</th>
+              <th class="num">Hin+Rück</th>
+            </tr>
+          </thead>
+          <tbody id="rankingTbody"></tbody>
+        </table>
+        <div class="ranking-summary" id="rankingSummary"></div>
+      </div>
+    </div>
+
     <p class="footer-note">Entfernungen werden per Google Maps berechnet und auf den nächsten vollen Kilometer aufgerundet.</p>
   </div>
 
@@ -343,6 +455,7 @@ function doPost(e) {
     const keyStatus = $("keyStatus");
     const apiKeyCard = $("apiKeyCard");
     const mainCard = $("mainCard");
+    const nearestCard = $("nearestCard");
     const settingsToggle = $("settingsToggle");
     const settings = $("settings");
     const changeKeyBtn = $("changeKeyBtn");
@@ -368,6 +481,7 @@ function doPost(e) {
     const sheetSelect = $("sheetSelect");
     const newSheetLink = $("newSheetLink");
     const refreshSheetsLink = $("refreshSheetsLink");
+    const resetWebhookLink = $("resetWebhookLink");
     let lastCalculation = null;
     let loadedSheetNames = [];
 
@@ -382,17 +496,40 @@ function doPost(e) {
     if (savedCountry !== null) countryInput.value = savedCountry;
     rateInput.addEventListener("change", () => localStorage.setItem(LS_RATE, rateInput.value));
     countryInput.addEventListener("change", () => localStorage.setItem(LS_COUNTRY, countryInput.value));
+    // Effektive URL: persönliche Override (localStorage) > Team (EMBEDDED)
     const savedWebhook = localStorage.getItem(LS_WEBHOOK);
-    if (EMBEDDED_WEBHOOK_URL) {
-      webhookInput.value = EMBEDDED_WEBHOOK_URL;
-      webhookInput.readOnly = true;
-      webhookInput.title = "Zentral vom Team hinterlegt";
-    } else if (savedWebhook) {
-      webhookInput.value = savedWebhook;
+    function updateResetLink() {
+      const hasOverride = !!localStorage.getItem(LS_WEBHOOK);
+      resetWebhookLink.style.display = (EMBEDDED_WEBHOOK_URL && hasOverride) ? "inline" : "none";
     }
+    if (savedWebhook) {
+      webhookInput.value = savedWebhook;
+    } else if (EMBEDDED_WEBHOOK_URL) {
+      webhookInput.value = EMBEDDED_WEBHOOK_URL;
+    }
+    updateResetLink();
+
     webhookInput.addEventListener("change", () => {
-      if (!EMBEDDED_WEBHOOK_URL) localStorage.setItem(LS_WEBHOOK, webhookInput.value.trim());
-      loadSheetList(); // Liste neu laden bei URL-Änderung
+      const v = webhookInput.value.trim();
+      // Wenn User die Team-URL wieder eintippt, Override entfernen
+      if (!v || v === EMBEDDED_WEBHOOK_URL) {
+        localStorage.removeItem(LS_WEBHOOK);
+        if (!v && EMBEDDED_WEBHOOK_URL) webhookInput.value = EMBEDDED_WEBHOOK_URL;
+      } else {
+        localStorage.setItem(LS_WEBHOOK, v);
+      }
+      updateResetLink();
+      // Tab-Auswahl der alten Sheet vergessen (passt ja nicht mehr)
+      localStorage.removeItem(LS_SHEETNAME);
+      loadSheetList();
+    });
+
+    resetWebhookLink.addEventListener("click", () => {
+      localStorage.removeItem(LS_WEBHOOK);
+      localStorage.removeItem(LS_SHEETNAME);
+      webhookInput.value = EMBEDDED_WEBHOOK_URL || "";
+      updateResetLink();
+      loadSheetList();
     });
 
     async function loadSheetList() {
@@ -441,6 +578,7 @@ function doPost(e) {
     settingsToggle.addEventListener("click", () => settings.classList.toggle("open"));
     changeKeyBtn.addEventListener("click", () => {
       mainCard.style.display = "none";
+      nearestCard.style.display = "none";
       apiKeyCard.style.display = "block";
       apiKeyInput.value = "";
       apiKeyInput.focus();
@@ -483,6 +621,13 @@ function doPost(e) {
       sessionToken = new google.maps.places.AutocompleteSessionToken();
       attachAutocomplete(originInput, originDropdown);
       attachAutocomplete(destInput, destDropdown);
+      // Einsatzort-Feld (neues Feature) ebenfalls mit Autocomplete ausstatten
+      const einsatzortEl = document.getElementById("einsatzort");
+      const einsatzortDd = document.getElementById("einsatzortDropdown");
+      if (einsatzortEl && einsatzortDd && !einsatzortEl.dataset.acReady) {
+        attachAutocomplete(einsatzortEl, einsatzortDd);
+        einsatzortEl.dataset.acReady = "1";
+      }
     }
 
     function debounce(fn, delay) {
@@ -607,6 +752,7 @@ function doPost(e) {
         hideKeyStatus();
         apiKeyCard.style.display = "none";
         mainCard.style.display = "block";
+        nearestCard.style.display = "block";
         originInput.focus();
         loadSheetList();
       } catch (err) {
@@ -621,6 +767,7 @@ function doPost(e) {
         // Team-Modus: Key ist fix eingebettet -> Key-Karte ausblenden
         apiKeyCard.style.display = "none";
         mainCard.style.display = "block";
+        nearestCard.style.display = "block";
         // "API-Key ändern"-Button ausblenden, damit Kollegen nichts kaputt machen
         if (changeKeyBtn) changeKeyBtn.style.display = "none";
         loadGoogleMaps(EMBEDDED_API_KEY)
@@ -762,6 +909,199 @@ function doPost(e) {
         saveSheetBtn.disabled = false;
       }
     });
+
+    // ============================================================
+    // FEATURE: Nächste Fachkraft finden
+    // ============================================================
+    const LS_NEAREST_RATE = "fahrtkosten_nearest_rate";
+    const einsatzortInput = $("einsatzort");
+    const einsatzortDropdown = $("einsatzortDropdown");
+    const fachkraftPlzInput = $("fachkraftPlz");
+    const nearestRateInput = $("nearestRate");
+    const findNearestBtn = $("findNearestBtn");
+    const nearestStatus = $("nearestStatus");
+    const nearestResult = $("nearestResult");
+    const winnerPlzEl = $("winnerPlz");
+    const winnerSubEl = $("winnerSub");
+    const winnerOneWayEl = $("winnerOneWay");
+    const winnerRoundTripEl = $("winnerRoundTrip");
+    const rankingTbody = $("rankingTbody");
+    const rankingSummary = $("rankingSummary");
+
+    const savedNearestRate = localStorage.getItem(LS_NEAREST_RATE);
+    if (savedNearestRate) nearestRateInput.value = savedNearestRate;
+    nearestRateInput.addEventListener("change", () => localStorage.setItem(LS_NEAREST_RATE, nearestRateInput.value));
+
+    function showNearestStatus(msg, type = "info") {
+      nearestStatus.textContent = msg;
+      nearestStatus.className = "status " + type;
+      nearestStatus.style.display = "block";
+    }
+    function hideNearestStatus() { nearestStatus.style.display = "none"; }
+
+    // PLZs aus Freitext extrahieren – 4- bis 5-stellige Zahlen
+    // (DE: 5, AT/CH: 4 — wir akzeptieren beides)
+    function parsePlzList(text) {
+      if (!text) return [];
+      const matches = text.match(/\b\d{4,5}\b/g) || [];
+      // Duplikate entfernen, Reihenfolge beibehalten
+      const seen = new Set();
+      const result = [];
+      for (const m of matches) {
+        if (!seen.has(m)) { seen.add(m); result.push(m); }
+      }
+      return result;
+    }
+
+    // Länder-Suffix für PLZ-basierte Geocodierung
+    function countryNameForCode(code) {
+      const map = { de: "Deutschland", at: "Österreich", ch: "Schweiz", fr: "Frankreich", it: "Italien",
+                    nl: "Niederlande", be: "Belgien", lu: "Luxemburg", pl: "Polen", cz: "Tschechien",
+                    dk: "Dänemark" };
+      return map[(code || "").toLowerCase()] || "";
+    }
+
+    function formatPlzForGeocode(plz) {
+      const country = countryNameForCode((countryInput.value || "").trim());
+      return country ? `${plz}, ${country}` : plz;
+    }
+
+    // Distance-Matrix-Call mit 1 Origin -> bis zu 25 Destinations
+    function runDistanceMatrix(origin, destinations) {
+      return new Promise((resolve, reject) => {
+        distanceService.getDistanceMatrix({
+          origins: [origin],
+          destinations: destinations,
+          travelMode: google.maps.TravelMode.DRIVING,
+          unitSystem: google.maps.UnitSystem.METRIC,
+        }, (response, status) => {
+          if (status !== "OK") {
+            let msg = "Distance Matrix Fehler: " + status;
+            if (status === "REQUEST_DENIED") msg = "Distance Matrix API abgelehnt. Bitte im Google-Cloud-Projekt aktivieren und Billing prüfen.";
+            reject(new Error(msg));
+            return;
+          }
+          resolve(response);
+        });
+      });
+    }
+
+    findNearestBtn.addEventListener("click", async () => {
+      hideNearestStatus();
+      nearestResult.style.display = "none";
+
+      const einsatzortRaw = einsatzortInput.value.trim();
+      if (!einsatzortRaw) { showNearestStatus("Bitte Einsatzort eingeben.", "error"); return; }
+
+      const plzList = parsePlzList(fachkraftPlzInput.value);
+      if (plzList.length === 0) { showNearestStatus("Keine PLZs erkannt. Bitte mindestens eine PLZ eingeben.", "error"); return; }
+
+      const rate = parseFloat((nearestRateInput.value || "0").replace(",", "."));
+      if (isNaN(rate) || rate < 0) { showNearestStatus("Bitte eine gültige Kilometerpauschale angeben.", "error"); return; }
+
+      if (!distanceService) { showNearestStatus("Google Maps noch nicht bereit.", "error"); return; }
+
+      // Wenn der Einsatzort eine reine PLZ ist, auch hier Country-Suffix anhängen
+      const einsatzortFormatted = /^\d{4,5}$/.test(einsatzortRaw) ? formatPlzForGeocode(einsatzortRaw) : einsatzortRaw;
+
+      // Hard-Limit: Über 100 PLZs wird unpraktisch und teuer
+      if (plzList.length > 100) {
+        showNearestStatus(`Zu viele PLZs (${plzList.length}). Bitte auf max. 100 begrenzen.`, "error");
+        return;
+      }
+
+      showNearestStatus(`Berechne Entfernungen für ${plzList.length} PLZ${plzList.length === 1 ? "" : "s"}...`, "loading");
+      findNearestBtn.disabled = true;
+
+      try {
+        // In Batches zu je 25 Destinations aufteilen (API-Limit)
+        const BATCH_SIZE = 25;
+        const results = []; // { plz, km, status, destAddress }
+
+        for (let i = 0; i < plzList.length; i += BATCH_SIZE) {
+          const batch = plzList.slice(i, i + BATCH_SIZE);
+          const destinations = batch.map(formatPlzForGeocode);
+          const response = await runDistanceMatrix(einsatzortFormatted, destinations);
+          const elements = response?.rows?.[0]?.elements || [];
+          const destAddresses = response?.destinationAddresses || [];
+
+          for (let j = 0; j < batch.length; j++) {
+            const el = elements[j];
+            if (!el || el.status !== "OK") {
+              results.push({
+                plz: batch[j],
+                km: null,
+                meters: null,
+                status: el ? el.status : "NO_RESULT",
+                destAddress: destAddresses[j] || ""
+              });
+            } else {
+              results.push({
+                plz: batch[j],
+                km: Math.ceil(el.distance.value / 1000),
+                meters: el.distance.value,
+                status: "OK",
+                destAddress: destAddresses[j] || ""
+              });
+            }
+          }
+        }
+
+        // Sortieren: erst gültige Ergebnisse nach km aufsteigend, dann Fehler
+        const valid = results.filter(r => r.status === "OK").sort((a, b) => a.meters - b.meters);
+        const errors = results.filter(r => r.status !== "OK");
+
+        if (valid.length === 0) {
+          showNearestStatus("Für keine PLZ konnte eine Route berechnet werden. Bitte PLZs und Land prüfen.", "error");
+          findNearestBtn.disabled = false;
+          return;
+        }
+
+        const winner = valid[0];
+        const winnerOneWay = winner.km * rate;
+        const winnerRoundTrip = winner.km * rate * 2;
+
+        winnerPlzEl.textContent = winner.plz;
+        winnerSubEl.innerHTML = `<b>${winner.km} km</b> von ${escapeHtmlPlain(einsatzortFormatted)}<br><span style="font-size:12px;">${escapeHtmlPlain(winner.destAddress)}</span>`;
+        winnerOneWayEl.textContent = formatEuro(winnerOneWay);
+        winnerRoundTripEl.textContent = formatEuro(winnerRoundTrip);
+
+        // Ranking-Tabelle aufbauen
+        const rows = [];
+        valid.forEach((r, idx) => {
+          const oneWay = r.km * rate;
+          const roundTrip = r.km * rate * 2;
+          rows.push(`<tr class="${idx === 0 ? "winner" : ""}">
+            <td>${escapeHtmlPlain(r.plz)}${idx === 0 ? " ★" : ""}</td>
+            <td class="num">${r.km}</td>
+            <td class="num">${formatEuro(oneWay)}</td>
+            <td class="num">${formatEuro(roundTrip)}</td>
+          </tr>`);
+        });
+        errors.forEach(r => {
+          rows.push(`<tr class="error">
+            <td>${escapeHtmlPlain(r.plz)}</td>
+            <td class="num" colspan="3">Keine Route (${r.status})</td>
+          </tr>`);
+        });
+        rankingTbody.innerHTML = rows.join("");
+
+        const errorNote = errors.length > 0 ? ` · ${errors.length} nicht gefunden` : "";
+        rankingSummary.textContent = `${valid.length} Fachkraft${valid.length === 1 ? "" : "/-kräfte"} berechnet · Rate: ${formatEuro(rate)}/km${errorNote}`;
+
+        nearestResult.style.display = "block";
+        hideNearestStatus();
+      } catch (err) {
+        showNearestStatus(err.message || "Fehler bei der Berechnung.", "error");
+      } finally {
+        findNearestBtn.disabled = false;
+      }
+    });
+
+    // kleiner Helfer, falls die vorhandene escapeHtml-Funktion nicht im Scope ist
+    function escapeHtmlPlain(s) {
+      return String(s || "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[c]));
+    }
   </script>
 </body>
 </html>
