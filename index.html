@@ -1205,21 +1205,4 @@
   </script>
 </body>
 </html>
-rate)}/km${errorNote}`;
 
-        nearestResult.style.display = "block";
-        hideNearestStatus();
-      } catch (err) {
-        showNearestStatus(err.message || "Fehler bei der Berechnung.", "error");
-      } finally {
-        findNearestBtn.disabled = false;
-      }
-    });
-
-    // kleiner Helfer, falls die vorhandene escapeHtml-Funktion nicht im Scope ist
-    function escapeHtmlPlain(s) {
-      return String(s || "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[c]));
-    }
-  </script>
-</body>
-</html>
