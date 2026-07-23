@@ -182,6 +182,14 @@
     .footer-note { text-align: center; color: var(--muted); font-size: 12px; margin-top: 20px; }
     .hint { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
     .hint a { color: var(--primary); }
+    .hint.warn { color: #b45309; }
+    .mahlzeiten-grid { display: flex; flex-direction: column; gap: 6px; }
+    .mz-row { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr; gap: 8px; align-items: center; padding: 8px 10px; background: #fafafa; border: 1px solid var(--border-soft); border-radius: var(--radius); }
+    .mz-row label { display: flex; gap: 6px; align-items: center; font-weight: 400; font-size: 13px; color: var(--text); margin: 0; cursor: pointer; text-transform: none; letter-spacing: 0; }
+    .mz-row input[type="checkbox"] { width: 16px; height: 16px; margin: 0; cursor: pointer; accent-color: var(--primary); }
+    .mz-day { font-size: 13px; color: var(--text); }
+    .mz-typ { display: inline-block; margin-left: 6px; font-size: 11px; color: var(--muted); background: #fff; border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; }
+    @media (max-width: 560px) { .mz-row { grid-template-columns: 1fr 1fr; } .mz-day { grid-column: 1 / -1; } }
 
     textarea {
       width: 100%;
@@ -316,7 +324,7 @@
         <div class="rate-row">
           <div class="field" style="position:static;">
             <label for="rate">Kilometerpauschale (€ pro km)</label>
-            <input type="number" id="rate" value="0.40" step="0.01" min="0" />
+            <input type="number" id="rate" value="0.30" step="0.01" min="0" />
           </div>
           <div class="field" style="position:static;">
             <label for="country">Land für Autocomplete</label>
@@ -344,26 +352,30 @@
       <form autocomplete="off" onsubmit="return false;">
         <div class="row">
           <div class="field" style="position:static;">
-            <label for="datum">Datum</label>
-            <input type="date" id="datum" />
+            <label for="startDatum">Reisebeginn – Datum</label>
+            <input type="date" id="startDatum" />
           </div>
           <div class="field" style="position:static;">
-            <label for="startTyp">Start</label>
-            <select id="startTyp">
-              <option value="B">B – Büro</option>
-              <option value="W">W – Wohnsitz</option>
-            </select>
+            <label for="reiseantritt">Reisebeginn – Uhrzeit</label>
+            <input type="time" id="reiseantritt" />
           </div>
         </div>
         <div class="row">
           <div class="field" style="position:static;">
-            <label for="reiseantritt">Reiseantritt</label>
-            <input type="time" id="reiseantritt" />
+            <label for="endDatum">Reiseende – Datum</label>
+            <input type="date" id="endDatum" />
           </div>
           <div class="field" style="position:static;">
-            <label for="reiseende">Reiseende</label>
+            <label for="reiseende">Reiseende – Uhrzeit</label>
             <input type="time" id="reiseende" />
           </div>
+        </div>
+        <div class="field" style="position:static;">
+          <label for="startTyp">Start</label>
+          <select id="startTyp">
+            <option value="B">B – Büro</option>
+            <option value="W">W – Wohnsitz</option>
+          </select>
         </div>
         <div class="field">
           <label for="destination">Ziel-Adresse</label>
@@ -384,12 +396,9 @@
         </div>
         <div class="row">
           <div class="field" style="position:static;">
-            <label for="verpflegung">Verpflegungspauschale</label>
-            <select id="verpflegung">
-              <option value="0">0 € (unter 8 h)</option>
-              <option value="14">14 € (8–24 h)</option>
-              <option value="28">28 € (über 24 h)</option>
-            </select>
+            <label for="verpflegung">Verpflegungspauschale (automatisch)</label>
+            <input type="text" id="verpflegung" readonly value="0,00 €" style="background:#fafafa; font-weight:600;" />
+            <div class="hint" id="verpflegungInfo">Reisebeginn und -ende (Datum + Uhrzeit) eingeben – die Pauschale wird automatisch berechnet.</div>
           </div>
           <div class="field" style="position:static;">
             <label for="nebenkosten">Nebenkosten (€)</label>
@@ -397,12 +406,9 @@
           </div>
         </div>
         <div class="field" style="position:static;">
-          <label>Abzug für gestellte Mahlzeiten</label>
-          <div class="inline-options">
-            <label><input type="checkbox" id="abzugFrueh" /> Frühstück (−5,60 €)</label>
-            <label><input type="checkbox" id="abzugMittag" /> Mittag (−11,20 €)</label>
-            <label><input type="checkbox" id="abzugAbend" /> Abendbrot (−11,20 €)</label>
-          </div>
+          <label>Gestellte Mahlzeiten (pro Tag)</label>
+          <div id="mahlzeitenGrid" class="mahlzeiten-grid"></div>
+          <div class="hint">Pro Reisetag ankreuzen, was gestellt wurde. Kürzung je Mahlzeit: Frühstück &minus;5,60 €, Mittag &minus;11,20 €, Abendbrot &minus;11,20 €.</div>
         </div>
         <div class="field" style="position:static;">
           <label>Fahrtkosten-Grundlage</label>
@@ -550,7 +556,8 @@
     const bueroDropdown = $("bueroDropdown");
     const wohnsitzAddrInput = $("wohnsitzAddr");
     const wohnsitzDropdown = $("wohnsitzDropdown");
-    const datumInput = $("datum");
+    const startDatumInput = $("startDatum");
+    const endDatumInput = $("endDatum");
     const reiseantrittInput = $("reiseantritt");
     const reiseendeInput = $("reiseende");
     const startTypSelect = $("startTyp");
@@ -558,11 +565,11 @@
     const destDropdown = $("destDropdown");
     const unternehmerInput = $("unternehmer");
     const zweckInput = $("zweck");
-    const verpflegungSelect = $("verpflegung");
+    const verpflegungInput = $("verpflegung");
+    const verpflegungInfoEl = $("verpflegungInfo");
     const nebenkostenInput = $("nebenkosten");
-    const abzugFruehEl = $("abzugFrueh");
-    const abzugMittagEl = $("abzugMittag");
-    const abzugAbendEl = $("abzugAbend");
+    const mahlzeitenGrid = $("mahlzeitenGrid");
+    let mahlzeiten = {}; // { tagIndex: {f,m,a} } – gestellte Mahlzeiten je Reisetag
     const calcBtn = $("calcBtn");
     const statusEl = $("status");
     const resultEl = $("result");
@@ -576,7 +583,7 @@
     const copyExcelBtn = $("copyExcelBtn");
     const copyStatusEl = $("copyStatus");
     const summeValEl = $("summeVal");
-    let verpflegungAutoSet = true; // solange true, Vorschlag aus Dauer überschreiben
+    let verpflegungValue = 0; // zuletzt automatisch berechnete Verpflegungspauschale (€)
 
     let autocompleteService = null;
     let distanceService = null;
@@ -620,28 +627,135 @@
     (function initDatum() {
       const d = new Date();
       const iso = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
-      datumInput.value = iso;
+      startDatumInput.value = iso;
+      endDatumInput.value = iso;
     })();
 
-    // Verpflegungspauschale automatisch aus Reisedauer vorschlagen
-    function updateVerpflegungSuggestion() {
-      if (!verpflegungAutoSet) return;
-      const start = reiseantrittInput.value;
-      const ende = reiseendeInput.value;
-      if (!start || !ende) return;
-      const [sh, sm] = start.split(":").map(Number);
-      const [eh, em] = ende.split(":").map(Number);
-      let minutes = (eh * 60 + em) - (sh * 60 + sm);
-      if (minutes < 0) minutes += 24 * 60; // Ende nach Mitternacht
-      const hours = minutes / 60;
-      let val = "0";
-      if (hours >= 24) val = "28";
-      else if (hours >= 8) val = "14";
-      verpflegungSelect.value = val;
+    // ============================================================
+    // Verpflegungspauschale automatisch nach deutschem Recht berechnen
+    // Inland-Sätze (seit 2020, unverändert gültig 2026):
+    //   14 € – eintägig > 8 h Abwesenheit sowie An- und Abreisetag
+    //   28 € – jeder volle Kalendertag (24 h) einer mehrtägigen Reise
+    // ============================================================
+    const VP_TEILTAG = 14;
+    const VP_VOLLTAG = 28;
+
+    function formatDauer(ms) {
+      const totalMin = Math.round(ms / 60000);
+      const h = Math.floor(totalMin / 60);
+      const m = totalMin % 60;
+      return m ? `${h} Std. ${m} Min.` : `${h} Std.`;
     }
-    reiseantrittInput.addEventListener("change", updateVerpflegungSuggestion);
-    reiseendeInput.addEventListener("change", updateVerpflegungSuggestion);
-    verpflegungSelect.addEventListener("change", () => { verpflegungAutoSet = false; });
+
+    // Baut das Tagesmodell der Reise aus Datum/Uhrzeit-Eingabe.
+    // Rueckgabe: { tage:[{iso, typ, allowance}], naechte, start, ende } oder { error }.
+    function getReiseTage() {
+      const sd = startDatumInput.value, st = reiseantrittInput.value;
+      const ed = endDatumInput.value, et = reiseendeInput.value;
+      if (!sd || !st || !ed || !et) return { error: "empty" };
+      const start = new Date(`${sd}T${st}`);
+      const ende = new Date(`${ed}T${et}`);
+      if (isNaN(start.getTime()) || isNaN(ende.getTime()) || ende <= start) return { error: "range" };
+      const startDay = new Date(sd + "T00:00");
+      const endDay = new Date(ed + "T00:00");
+      const naechte = Math.round((endDay.getTime() - startDay.getTime()) / 86400000);
+      const tage = [];
+      if (naechte === 0) {
+        const hours = (ende - start) / 3600000;
+        tage.push({ iso: sd, typ: "Eintägig", allowance: hours > 8 ? VP_TEILTAG : 0 });
+      } else {
+        for (let i = 0; i <= naechte; i++) {
+          const d = new Date(startDay.getTime() + i * 86400000);
+          const iso = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+          let allowance, typ;
+          if (i === 0) { allowance = VP_TEILTAG; typ = "Anreise"; }
+          else if (i === naechte) { allowance = VP_TEILTAG; typ = "Abreise"; }
+          else { allowance = VP_VOLLTAG; typ = "Zwischentag"; }
+          tage.push({ iso, typ, allowance });
+        }
+      }
+      return { tage, naechte, start, ende };
+    }
+
+    // Verpflegungspauschale (vor Mahlzeitenabzug) + Info-Text
+    function computeVerpflegung() {
+      const m = getReiseTage();
+      if (m.error === "empty") {
+        return { value: 0, info: "Reisebeginn und -ende (Datum + Uhrzeit) eingeben – die Pauschale wird automatisch berechnet.", ok: false, filled: false };
+      }
+      if (m.error === "range") {
+        return { value: 0, info: "Reiseende muss nach dem Reisebeginn liegen.", ok: false, filled: true };
+      }
+      const value = m.tage.reduce((sum, t) => sum + t.allowance, 0);
+      let info;
+      if (m.naechte === 0) {
+        const dauer = m.ende - m.start;
+        info = value > 0
+          ? `Eintägig · ${formatDauer(dauer)} Abwesenheit (> 8 h) → 14 €`
+          : `Eintägig · ${formatDauer(dauer)} Abwesenheit (≤ 8 h) → 0 €`;
+      } else {
+        const zwischentage = m.naechte - 1;
+        const teile = ["Anreise 14 €"];
+        if (zwischentage > 0) teile.push(`${zwischentage} × 28 €`);
+        teile.push("Abreise 14 €");
+        info = `Mehrtägig · ${m.naechte + 1} Tage: ${teile.join(" + ")} = ${formatEuro(value)}`;
+      }
+      return { value, info, ok: true, filled: true };
+    }
+
+    function updateVerpflegung() {
+      const res = computeVerpflegung();
+      verpflegungValue = res.value;
+      verpflegungInput.value = formatEuro(res.value);
+      verpflegungInfoEl.textContent = res.info;
+      verpflegungInfoEl.classList.toggle("warn", res.filled && !res.ok);
+    }
+
+    // Mahlzeiten-Raster: pro Reisetag eine Zeile mit Frühstück/Mittag/Abendbrot
+    function renderMahlzeiten() {
+      const m = getReiseTage();
+      if (!m.tage) {
+        mahlzeitenGrid.innerHTML = '<div class="hint" style="margin:0;">Gültigen Reisezeitraum eingeben – dann erscheint hier pro Tag eine Zeile.</div>';
+        return;
+      }
+      mahlzeitenGrid.innerHTML = m.tage.map((t, i) => {
+        const sel = mahlzeiten[i] || {};
+        return `<div class="mz-row">
+          <div class="mz-day"><b>Tag ${i+1}</b> · ${formatDateDE(t.iso)}<span class="mz-typ">${t.typ}</span></div>
+          <label><input type="checkbox" data-mz="${i}" data-meal="f"${sel.f ? " checked" : ""}/> Frühstück</label>
+          <label><input type="checkbox" data-mz="${i}" data-meal="m"${sel.m ? " checked" : ""}/> Mittag</label>
+          <label><input type="checkbox" data-mz="${i}" data-meal="a"${sel.a ? " checked" : ""}/> Abendbrot</label>
+        </div>`;
+      }).join("");
+    }
+
+    mahlzeitenGrid.addEventListener("change", (e) => {
+      const cb = e.target.closest('input[type="checkbox"]');
+      if (!cb) return;
+      const i = cb.dataset.mz, meal = cb.dataset.meal;
+      if (!mahlzeiten[i]) mahlzeiten[i] = {};
+      mahlzeiten[i][meal] = cb.checked;
+    });
+
+    // Anzahl gestellter Mahlzeiten je Typ über alle aktuellen Reisetage
+    function getMahlzeitenTotals() {
+      const m = getReiseTage();
+      let cf = 0, cm = 0, ca = 0;
+      const n = m.tage ? m.tage.length : 0;
+      for (let i = 0; i < n; i++) {
+        const sel = mahlzeiten[i] || {};
+        if (sel.f) cf++;
+        if (sel.m) cm++;
+        if (sel.a) ca++;
+      }
+      return { cf, cm, ca };
+    }
+
+    [startDatumInput, endDatumInput, reiseantrittInput, reiseendeInput].forEach(el =>
+      el.addEventListener("change", () => { updateVerpflegung(); renderMahlzeiten(); }));
+    // Initiale Berechnung (Datum ist bereits auf heute vorbelegt)
+    updateVerpflegung();
+    renderMahlzeiten();
 
     settingsToggle.addEventListener("click", () => settings.classList.toggle("open"));
     changeKeyBtn.addEventListener("click", () => {
@@ -923,10 +1037,12 @@
         const fahrtkosten = gefahreneKm * rate;
 
         // Verpflegung + Abzüge
-        const verpflegung = parseFloat(verpflegungSelect.value) || 0;
-        const abzugFrueh = abzugFruehEl.checked ? 5.60 : 0;
-        const abzugMittag = abzugMittagEl.checked ? 11.20 : 0;
-        const abzugAbend = abzugAbendEl.checked ? 11.20 : 0;
+        updateVerpflegung();
+        const verpflegung = verpflegungValue;
+        const mzTotals = getMahlzeitenTotals();
+        const abzugFrueh = mzTotals.cf * 5.60;
+        const abzugMittag = mzTotals.cm * 11.20;
+        const abzugAbend = mzTotals.ca * 11.20;
         const nebenkosten = parseFloat((nebenkostenInput.value || "0").replace(",", ".")) || 0;
 
         const summe = verpflegung - abzugFrueh - abzugMittag - abzugAbend + fahrtkosten + nebenkosten;
@@ -941,7 +1057,7 @@
 
         // Excel-Zeile bauen (16 Spalten, Tab-getrennt, leere Spalte 8 zwischen Zweck und Verpflegung)
         const col = {
-          datum: formatDateDE(datumInput.value),
+          datum: formatDateDE(startDatumInput.value),
           reiseantritt: reiseantrittInput.value || "",     // HH:MM
           reiseende: reiseendeInput.value || "",
           start: starttyp,                                  // "B" oder "W"
