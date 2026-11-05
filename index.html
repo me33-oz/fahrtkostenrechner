@@ -408,6 +408,14 @@
           </div>
           <div class="hint">Bei mehreren Aufträgen: „Hin- &amp; Rückfahrt" = Rückweg vom letzten Auftrag zum Start wird mitgezählt (in der Zeile des letzten Auftrags).</div>
         </div>
+        <div class="field" style="position:static;">
+          <label>Fahrzeug</label>
+          <div class="inline-options">
+            <label><input type="radio" name="fahrzeug" value="privat" checked /> Privater Pkw</label>
+            <label><input type="radio" name="fahrzeug" value="dienst" /> Dienstwagen</label>
+          </div>
+          <div class="hint">Nur bei privatem Pkw wird die Kilometerpauschale erstattet. Beim Dienstwagen werden die km erfasst, die Fahrtkosten aber mit 0 € angesetzt.</div>
+        </div>
       </form>
 
       <button id="calcBtn">Berechnen &amp; Excel-Zeile erzeugen</button>
@@ -614,6 +622,17 @@
     }
     document.querySelectorAll('input[name="fahrtmodus"]').forEach(r => {
       r.addEventListener("change", () => localStorage.setItem(LS_FAHRTMODUS, r.value));
+    });
+
+    // Fahrzeug (privater Pkw / Dienstwagen) merken
+    const LS_FAHRZEUG = "fahrtkosten_last_fahrzeug";
+    const savedFahrzeug = localStorage.getItem(LS_FAHRZEUG);
+    if (savedFahrzeug === "privat" || savedFahrzeug === "dienst") {
+      const radio = document.querySelector(`input[name="fahrzeug"][value="${savedFahrzeug}"]`);
+      if (radio) radio.checked = true;
+    }
+    document.querySelectorAll('input[name="fahrzeug"]').forEach(r => {
+      r.addEventListener("change", () => localStorage.setItem(LS_FAHRZEUG, r.value));
     });
 
     // Datum auf heute vorbelegen
@@ -936,19 +955,20 @@
     async function geocode(text) {
       const key = text.trim();
       if (geoCache.has(key)) return geoCache.get(key);
-      let hits = await photonSearch(key, { limit: 1 });
+      let hits = await photonSearch(key, { limit: 5 });
+      const exact = hits.length > 0; // sonst nur ungefähr (PLZ/Ort) gefunden -> Eingabetext als Bezeichnung behalten
       if (!hits.length) {
         // Fallback: Länderzusatz weglassen bzw. nur PLZ + Ort verwenden
         const ohneLand = key.replace(/,\s*(Deutschland|Germany|Österreich|Austria|Schweiz|Switzerland)\s*$/i, "");
         const plzOrt = ohneLand.match(/\b\d{4,5}\s+[^,]+/);
         for (const alt of [ohneLand, plzOrt && plzOrt[0]]) {
-          if (alt && alt !== key) { hits = await photonSearch(alt, { limit: 1 }); if (hits.length) break; }
+          if (alt && alt !== key) { hits = await photonSearch(alt, { limit: 5 }); if (hits.length) break; }
         }
       }
       // Reine PLZ-Suche: nur Treffer mit genau dieser PLZ akzeptieren
       const plzOnly = key.match(/^(\d{4,5})\s*(,|$)/);
       if (plzOnly && hits[0] && hits[0].postcode !== plzOnly[1]) hits = [];
-      const r = hits[0] ? { lat: hits[0].lat, lon: hits[0].lon, label: hits[0].description } : null;
+      const r = hits[0] ? { lat: hits[0].lat, lon: hits[0].lon, label: exact ? hits[0].description : key } : null;
       geoCache.set(key, r);
       return r;
     }
@@ -1245,8 +1265,10 @@
         return;
       }
 
-      const rate = parseFloat((rateInput.value || "0").replace(",", "."));
-      if (isNaN(rate) || rate < 0) { showStatus("Bitte eine gültige Kilometerpauschale angeben.", "error"); return; }
+      const pauschale = parseFloat((rateInput.value || "0").replace(",", "."));
+      const dienstwagen = document.querySelector('input[name="fahrzeug"]:checked')?.value === "dienst";
+      const rate = dienstwagen ? 0 : pauschale; // Dienstwagen: keine Fahrtkostenerstattung
+      if (isNaN(pauschale) || pauschale < 0) { showStatus("Bitte eine gültige Kilometerpauschale angeben.", "error"); return; }
       if (!distanceService) { showStatus("Kartendienst noch nicht bereit.", "error"); return; }
 
       const fahrtmodus = document.querySelector('input[name="fahrtmodus"]:checked')?.value || "rueck";
@@ -1382,6 +1404,11 @@
           excelTitleEl.textContent = `Excel-Zeilen (${n} Aufträge, Tab-getrennt)`;
         }
 
+        if (dienstwagen) {
+          costOneWayCalcEl.textContent = "Dienstwagen – keine Erstattung";
+          costRoundTripCalcEl.textContent = "Dienstwagen – keine Erstattung";
+          distanceLabelEl.textContent += " · Dienstwagen: keine Fahrtkostenerstattung";
+        }
         excelLineEl.value = zeilen.join("\n");
         excelLineEl.rows = Math.max(2, n + 1);
         summeValEl.textContent = formatEuro(gesamtSumme);
