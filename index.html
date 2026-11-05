@@ -283,6 +283,13 @@
       font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.5;
     }
 
+    .auftrag { background: #fafafa; border: 1px solid var(--border-soft); border-left: 3px solid var(--primary); border-radius: var(--radius); padding: 14px 14px 2px; margin-bottom: 10px; }
+    .auftrag-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; font-size: 15px; }
+    .auftrag-head a { font-size: 13px; color: #b91c1c; cursor: pointer; user-select: none; }
+    .auftrag-head a:hover { text-decoration: underline; }
+    .auftrag.single .auftrag-head { display: none; }
+    .mz-auftrag { display: inline-block; margin-left: 6px; font-size: 11px; color: var(--text); background: var(--accent-tint); border: 1px solid #e3e5b4; border-radius: 999px; padding: 1px 8px; }
+
     .addr-resolved {
       font-size: 12px; color: var(--muted); margin-top: 6px;
       padding: 8px 10px; background: #fafafa; border-radius: var(--radius);
@@ -377,33 +384,16 @@
             <option value="W">W – Wohnsitz</option>
           </select>
         </div>
-        <div class="field">
-          <label for="destination">Ziel-Adresse</label>
-          <input type="search" id="destination" name="fk_dest_nosave" placeholder="Adresse oder PLZ eingeben..."
-                 autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-                 data-lpignore="true" data-form-type="other" data-1p-ignore="true" />
-          <div class="ac-dropdown" id="destDropdown"></div>
+        <div class="field" style="position:static;">
+          <label>Aufträge / Reiseziele</label>
+          <div id="auftraegeList"></div>
+          <button type="button" class="settings-toggle" id="addAuftragBtn" style="margin-bottom:6px;">+ Weiteren Auftrag hinzufügen</button>
+          <div class="hint" id="auftraegeHint">Mehrere Aufträge (auch an verschiedenen Tagen) werden als Kette gerechnet: Start → Auftrag 1 → Auftrag 2 → … → zurück zum Start (bei Hin- &amp; Rückfahrt). Pro Auftrag entsteht eine eigene Excel-Zeile.</div>
         </div>
-        <div class="row">
-          <div class="field" style="position:static;">
-            <label for="unternehmer">Unternehmer / Firma</label>
-            <input type="text" id="unternehmer" placeholder="z. B. Mustermann GmbH" autocomplete="off" />
-          </div>
-          <div class="field" style="position:static;">
-            <label for="zweck">Zweck</label>
-            <input type="text" id="zweck" placeholder="z. B. Kundentermin" autocomplete="off" />
-          </div>
-        </div>
-        <div class="row">
-          <div class="field" style="position:static;">
-            <label for="verpflegung">Verpflegungspauschale (automatisch)</label>
-            <input type="text" id="verpflegung" readonly value="0,00 €" style="background:#fafafa; font-weight:600;" />
-            <div class="hint" id="verpflegungInfo">Reisebeginn und -ende (Datum + Uhrzeit) eingeben – die Pauschale wird automatisch berechnet.</div>
-          </div>
-          <div class="field" style="position:static;">
-            <label for="nebenkosten">Nebenkosten (€)</label>
-            <input type="number" id="nebenkosten" value="0" step="0.01" min="0" />
-          </div>
+        <div class="field" style="position:static;">
+          <label for="verpflegung">Verpflegungspauschale gesamt (automatisch)</label>
+          <input type="text" id="verpflegung" readonly value="0,00 €" style="background:#fafafa; font-weight:600;" />
+          <div class="hint" id="verpflegungInfo">Reisebeginn und -ende (Datum + Uhrzeit) eingeben – die Pauschale wird automatisch berechnet.</div>
         </div>
         <div class="field" style="position:static;">
           <label>Gestellte Mahlzeiten (pro Tag)</label>
@@ -416,6 +406,7 @@
             <label><input type="radio" name="fahrtmodus" value="einfach" /> Einfache Fahrt</label>
             <label><input type="radio" name="fahrtmodus" value="rueck" checked /> Hin- &amp; Rückfahrt</label>
           </div>
+          <div class="hint">Bei mehreren Aufträgen: „Hin- &amp; Rückfahrt" = Rückweg vom letzten Auftrag zum Start wird mitgezählt (in der Zeile des letzten Auftrags).</div>
         </div>
       </form>
 
@@ -425,7 +416,12 @@
       <div class="result" id="result" style="display:none;">
         <p class="km"><span id="km">0</span> <small>km</small></p>
         <p class="distance-label" id="distanceLabel"></p>
-        <div class="costs">
+        <table class="ranking-table" id="legsTable" style="display:none; margin-bottom:18px;">
+          <colgroup><col style="width:44%" /><col style="width:20%" /><col style="width:14%" /><col style="width:22%" /></colgroup>
+          <thead><tr><th>Teilstrecke</th><th>Auftrag</th><th class="num">km</th><th class="num">Kosten</th></tr></thead>
+          <tbody id="legsTbody"></tbody>
+        </table>
+        <div class="costs" id="costsBoxes">
           <div class="cost-box">
             <div class="label">Einfache Fahrt</div>
             <div class="value" id="costOneWay">–</div>
@@ -440,7 +436,7 @@
 
         <div class="excel-box">
           <div class="excel-box-head">
-            <span class="title">Excel-Zeile (Tab-getrennt)</span>
+            <span class="title" id="excelTitle">Excel-Zeile (Tab-getrennt)</span>
             <span class="summe">Summe: <b id="summeVal">–</b></span>
           </div>
           <textarea id="excelLine" readonly rows="2" spellcheck="false"></textarea>
@@ -561,13 +557,15 @@
     const reiseantrittInput = $("reiseantritt");
     const reiseendeInput = $("reiseende");
     const startTypSelect = $("startTyp");
-    const destInput = $("destination");
-    const destDropdown = $("destDropdown");
-    const unternehmerInput = $("unternehmer");
-    const zweckInput = $("zweck");
+    const auftraegeListEl = $("auftraegeList");
+    const addAuftragBtn = $("addAuftragBtn");
+    const legsTableEl = $("legsTable");
+    const legsTbodyEl = $("legsTbody");
+    const costsBoxesEl = $("costsBoxes");
+    const excelTitleEl = $("excelTitle");
     const verpflegungInput = $("verpflegung");
     const verpflegungInfoEl = $("verpflegungInfo");
-    const nebenkostenInput = $("nebenkosten");
+    const MAX_AUFTRAEGE = 8;
     const mahlzeitenGrid = $("mahlzeitenGrid");
     let mahlzeiten = {}; // { tagIndex: {f,m,a} } – gestellte Mahlzeiten je Reisetag
     const calcBtn = $("calcBtn");
@@ -603,11 +601,6 @@
     bueroAddrInput.addEventListener("change", () => localStorage.setItem(LS_BUERO, bueroAddrInput.value.trim()));
     wohnsitzAddrInput.addEventListener("change", () => localStorage.setItem(LS_WOHNSITZ, wohnsitzAddrInput.value.trim()));
 
-    // Letzte Werte für Komfort-Felder
-    unternehmerInput.value = localStorage.getItem(LS_UNTERNEHMER) || "";
-    zweckInput.value = localStorage.getItem(LS_ZWECK) || "";
-    unternehmerInput.addEventListener("change", () => localStorage.setItem(LS_UNTERNEHMER, unternehmerInput.value.trim()));
-    zweckInput.addEventListener("change", () => localStorage.setItem(LS_ZWECK, zweckInput.value.trim()));
 
     // Start-Typ und Fahrtmodus merken
     const savedStartTyp = localStorage.getItem(LS_STARTTYP);
@@ -718,10 +711,12 @@
         mahlzeitenGrid.innerHTML = '<div class="hint" style="margin:0;">Gültigen Reisezeitraum eingeben – dann erscheint hier pro Tag eine Zeile.</div>';
         return;
       }
+      const owners = auftraege.length > 1 ? getTagZuordnung(m.tage.length) : null;
       mahlzeitenGrid.innerHTML = m.tage.map((t, i) => {
         const sel = mahlzeiten[i] || {};
+        const ownerTag = owners ? `<span class="mz-auftrag">Auftrag ${owners[i].nr}</span>` : "";
         return `<div class="mz-row">
-          <div class="mz-day"><b>Tag ${i+1}</b> · ${formatDateDE(t.iso)}<span class="mz-typ">${t.typ}</span></div>
+          <div class="mz-day"><b>Tag ${i+1}</b> · ${formatDateDE(t.iso)}<span class="mz-typ">${t.typ}</span>${ownerTag}</div>
           <label><input type="checkbox" data-mz="${i}" data-meal="f"${sel.f ? " checked" : ""}/> Frühstück</label>
           <label><input type="checkbox" data-mz="${i}" data-meal="m"${sel.m ? " checked" : ""}/> Mittag</label>
           <label><input type="checkbox" data-mz="${i}" data-meal="a"${sel.a ? " checked" : ""}/> Abendbrot</label>
@@ -737,24 +732,136 @@
       mahlzeiten[i][meal] = cb.checked;
     });
 
-    // Anzahl gestellter Mahlzeiten je Typ über alle aktuellen Reisetage
-    function getMahlzeitenTotals() {
+    // ============================================================
+    // Aufträge – mehrere Reiseziele innerhalb einer (mehrtägigen) Reise
+    // ============================================================
+    const escHtml = (s) => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[c]));
+    let auftraege = [];   // [{ el, dayIdx, destInput, dropdown, untInput, zweckInput, nebenInput, tagSelect, tagField }]
+    let auftragSeq = 0;
+
+    function makeAuftrag(prefill = {}) {
+      const id = ++auftragSeq;
+      const el = document.createElement("div");
+      el.className = "auftrag";
+      el.innerHTML = `
+        <div class="auftrag-head"><b class="a-title">Auftrag</b><a class="a-remove">Entfernen</a></div>
+        <div class="field">
+          <label>Ziel-Adresse</label>
+          <input type="search" class="a-dest" name="fk_dest_nosave_${id}" placeholder="Adresse oder PLZ eingeben..."
+                 autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                 data-lpignore="true" data-form-type="other" data-1p-ignore="true" />
+          <div class="ac-dropdown"></div>
+        </div>
+        <div class="row">
+          <div class="field" style="position:static;">
+            <label>Unternehmer / Firma</label>
+            <input type="text" class="a-unt" placeholder="z. B. Mustermann GmbH" autocomplete="off" />
+          </div>
+          <div class="field" style="position:static;">
+            <label>Zweck</label>
+            <input type="text" class="a-zweck" placeholder="z. B. Kundentermin" autocomplete="off" />
+          </div>
+        </div>
+        <div class="row">
+          <div class="field a-tagfield" style="position:static;">
+            <label>Tag des Auftrags</label>
+            <select class="a-tag"></select>
+          </div>
+          <div class="field" style="position:static;">
+            <label>Nebenkosten (€)</label>
+            <input type="number" class="a-neben" value="0" step="0.01" min="0" />
+          </div>
+        </div>`;
+      const a = {
+        el,
+        dayIdx: prefill.dayIdx || 0,
+        destInput: el.querySelector(".a-dest"),
+        dropdown: el.querySelector(".ac-dropdown"),
+        untInput: el.querySelector(".a-unt"),
+        zweckInput: el.querySelector(".a-zweck"),
+        nebenInput: el.querySelector(".a-neben"),
+        tagSelect: el.querySelector(".a-tag"),
+        tagField: el.querySelector(".a-tagfield"),
+      };
+      a.untInput.value = prefill.unternehmer || "";
+      a.zweckInput.value = prefill.zweck || "";
+      a.tagSelect.addEventListener("change", () => {
+        a.dayIdx = parseInt(a.tagSelect.value, 10) || 0;
+        renderMahlzeiten();
+      });
+      el.querySelector(".a-remove").addEventListener("click", () => {
+        if (auftraege.length <= 1) return;
+        auftraege = auftraege.filter(x => x !== a);
+        el.remove();
+        renderAuftraegeMeta();
+        renderMahlzeiten();
+      });
+      if (autocompleteService) { attachAutocomplete(a.destInput, a.dropdown); a.destInput.dataset.acReady = "1"; }
+      auftraege.push(a);
+      auftraegeListEl.appendChild(el);
+      return a;
+    }
+
+    // Titel, Tag-Auswahl und Sichtbarkeit aller Auftrags-Blöcke aktualisieren
+    function renderAuftraegeMeta() {
       const m = getReiseTage();
-      let cf = 0, cm = 0, ca = 0;
-      const n = m.tage ? m.tage.length : 0;
-      for (let i = 0; i < n; i++) {
-        const sel = mahlzeiten[i] || {};
-        if (sel.f) cf++;
-        if (sel.m) cm++;
-        if (sel.a) ca++;
+      const tage = m.tage || [];
+      const multi = auftraege.length > 1;
+      auftraege.forEach((a, i) => {
+        a.el.querySelector(".a-title").textContent = `Auftrag ${i + 1}`;
+        a.el.classList.toggle("single", !multi);
+        if (tage.length) a.dayIdx = Math.min(a.dayIdx, tage.length - 1);
+        else a.dayIdx = 0;
+        a.tagSelect.innerHTML = tage.length
+          ? tage.map((t, d) => `<option value="${d}"${d === a.dayIdx ? " selected" : ""}>Tag ${d + 1} · ${formatDateDE(t.iso)}</option>`).join("")
+          : `<option value="0">–</option>`;
+        a.tagField.style.display = tage.length > 1 ? "" : "none";
+      });
+      addAuftragBtn.disabled = auftraege.length >= MAX_AUFTRAEGE;
+      addAuftragBtn.style.opacity = addAuftragBtn.disabled ? "0.4" : "";
+    }
+
+    addAuftragBtn.addEventListener("click", () => {
+      if (auftraege.length >= MAX_AUFTRAEGE) return;
+      const last = auftraege[auftraege.length - 1];
+      const m = getReiseTage();
+      const maxDay = m.tage ? m.tage.length - 1 : 0;
+      const a = makeAuftrag({ dayIdx: Math.min((last ? last.dayIdx : 0) + 1, maxDay) });
+      renderAuftraegeMeta();
+      renderMahlzeiten();
+      a.destInput.focus();
+    });
+
+    // Aufträge in Routen-Reihenfolge: nach Tag, bei gleichem Tag nach Eingabe-Reihenfolge
+    function getSortierteAuftraege() {
+      return auftraege.map((a, i) => ({ a, nr: i + 1 }))
+        .sort((x, y) => (x.a.dayIdx - y.a.dayIdx) || (x.nr - y.nr));
+    }
+
+    // Ordnet jeden Reisetag einem Auftrag zu (für Verpflegung + Mahlzeiten):
+    // Tag gehört zum letzten Auftrag, der an oder vor diesem Tag liegt; Tage vor dem ersten Auftrag zum ersten.
+    function getTagZuordnung(anzahlTage) {
+      const sorted = getSortierteAuftraege();
+      const owners = [];
+      for (let d = 0; d < anzahlTage; d++) {
+        let owner = sorted[0];
+        for (const x of sorted) {
+          if (x.a.dayIdx <= d && x.a.dayIdx > owner.a.dayIdx) owner = x;
+        }
+        owners.push(owner);
       }
-      return { cf, cm, ca };
+      return owners; // [{a, nr}] je Tag
     }
 
     [startDatumInput, endDatumInput, reiseantrittInput, reiseendeInput].forEach(el =>
-      el.addEventListener("change", () => { updateVerpflegung(); renderMahlzeiten(); }));
+      el.addEventListener("change", () => { updateVerpflegung(); renderAuftraegeMeta(); renderMahlzeiten(); }));
+
+    // Ersten Auftrag anlegen (mit zuletzt genutzter Firma / Zweck)
+    makeAuftrag({ unternehmer: localStorage.getItem(LS_UNTERNEHMER) || "", zweck: localStorage.getItem(LS_ZWECK) || "" });
+
     // Initiale Berechnung (Datum ist bereits auf heute vorbelegt)
     updateVerpflegung();
+    renderAuftraegeMeta();
     renderMahlzeiten();
 
     settingsToggle.addEventListener("click", () => settings.classList.toggle("open"));
@@ -801,7 +908,9 @@
       autocompleteService = new google.maps.places.AutocompleteService();
       distanceService = new google.maps.DistanceMatrixService();
       sessionToken = new google.maps.places.AutocompleteSessionToken();
-      attachAutocomplete(destInput, destDropdown);
+      auftraege.forEach(a => {
+        if (!a.destInput.dataset.acReady) { attachAutocomplete(a.destInput, a.dropdown); a.destInput.dataset.acReady = "1"; }
+      });
       attachAutocomplete(bueroAddrInput, bueroDropdown);
       attachAutocomplete(wohnsitzAddrInput, wohnsitzDropdown);
       // Einsatzort-Feld (zweites Feature) ebenfalls mit Autocomplete ausstatten
@@ -936,7 +1045,7 @@
         apiKeyCard.style.display = "none";
         mainCard.style.display = "block";
         nearestCard.style.display = "block";
-        destInput.focus();
+        auftraege[0].destInput.focus();
       } catch (err) {
         showKeyStatus("Fehler beim Laden: " + err.message, "error");
       } finally {
@@ -953,7 +1062,7 @@
         // "API-Key ändern"-Button ausblenden, damit Kollegen nichts kaputt machen
         if (changeKeyBtn) changeKeyBtn.style.display = "none";
         loadGoogleMaps(EMBEDDED_API_KEY)
-          .then(() => { initServices(); destInput.focus(); })
+          .then(() => { initServices(); auftraege[0].destInput.focus(); })
           .catch(err => {
             apiKeyCard.style.display = "block";
             mainCard.style.display = "none";
@@ -985,29 +1094,54 @@
       return `${d}.${m}.${y}`;
     }
 
+    // Kurzlabel für Adressen in der Teilstrecken-Tabelle (z. B. "20095 Hamburg")
+    function kurzAdresse(addr) {
+      const s = String(addr || "").replace(/,\s*(Deutschland|Germany)$/i, "");
+      const plzOrt = s.match(/\b\d{4,5}\s+[^,]+/);
+      return plzOrt ? plzOrt[0] : s.split(",")[0];
+    }
+
     calcBtn.addEventListener("click", () => {
       const starttyp = startTypSelect.value; // "B" oder "W"
+      const startName = starttyp === "B" ? "Büro" : "Wohnsitz";
       const origin = (starttyp === "B" ? bueroAddrInput.value : wohnsitzAddrInput.value).trim();
-      const destination = destInput.value.trim();
 
       if (!origin) {
-        showStatus(`Bitte erst die ${starttyp === "B" ? "Büro" : "Wohnsitz"}-Adresse in den Einstellungen hinterlegen.`, "error");
+        showStatus(`Bitte erst die ${startName}-Adresse in den Einstellungen hinterlegen.`, "error");
         settings.classList.add("open");
         return;
       }
-      if (!destination) { showStatus("Bitte eine Ziel-Adresse eingeben.", "error"); return; }
+
+      const multi = auftraege.length > 1;
+      const leer = auftraege.findIndex(a => !a.destInput.value.trim());
+      if (leer >= 0) {
+        showStatus(multi ? `Bitte eine Ziel-Adresse für Auftrag ${leer + 1} eingeben.` : "Bitte eine Ziel-Adresse eingeben.", "error");
+        auftraege[leer].destInput.focus();
+        return;
+      }
 
       const rate = parseFloat((rateInput.value || "0").replace(",", "."));
       if (isNaN(rate) || rate < 0) { showStatus("Bitte eine gültige Kilometerpauschale angeben.", "error"); return; }
       if (!distanceService) { showStatus("Google Maps noch nicht bereit.", "error"); return; }
 
-      showStatus("Berechne Entfernung...", "loading");
+      const fahrtmodus = document.querySelector('input[name="fahrtmodus"]:checked')?.value || "rueck";
+      const sorted = getSortierteAuftraege();          // Routen-Reihenfolge
+      const n = sorted.length;
+      const dests = sorted.map(x => x.a.destInput.value.trim());
+      const mitRueckweg = fahrtmodus === "rueck" && n > 1; // bei 1 Auftrag wie bisher: einfache Strecke × 2
+
+      // Teilstrecken: Start → Z1 → Z2 → … (→ Start)
+      const legOrigins = [origin, ...dests.slice(0, -1)];
+      const legDests = [...dests];
+      if (mitRueckweg) { legOrigins.push(dests[n - 1]); legDests.push(origin); }
+
+      showStatus(multi ? `Berechne ${legOrigins.length} Teilstrecken...` : "Berechne Entfernung...", "loading");
       resultEl.style.display = "none";
       calcBtn.disabled = true;
 
       distanceService.getDistanceMatrix({
-        origins: [origin],
-        destinations: [destination],
+        origins: legOrigins,
+        destinations: legDests,
         travelMode: google.maps.TravelMode.DRIVING,
         unitSystem: google.maps.UnitSystem.METRIC,
       }, (response, status) => {
@@ -1017,76 +1151,120 @@
           if (status === "REQUEST_DENIED") msg = "Distance Matrix API abgelehnt. Bitte im Google-Cloud-Projekt aktivieren und Billing prüfen.";
           showStatus(msg, "error"); return;
         }
-        const elem = response?.rows?.[0]?.elements?.[0];
-        if (!elem) { showStatus("Keine Route gefunden.", "error"); return; }
-        if (elem.status !== "OK") {
-          let msg = "Keine Route";
-          if (elem.status === "ZERO_RESULTS") msg = "Keine Route zwischen diesen Adressen gefunden.";
-          else if (elem.status === "NOT_FOUND") msg = "Eine der Adressen konnte nicht gefunden werden.";
-          showStatus(msg + " (" + elem.status + ")", "error"); return;
+
+        // Diagonale der Matrix = die gewünschten Teilstrecken
+        const legs = [];
+        for (let i = 0; i < legOrigins.length; i++) {
+          const elem = response?.rows?.[i]?.elements?.[i];
+          const legName = i < n ? (multi ? `Strecke zu Auftrag ${sorted[i].nr}` : "") : "Rückfahrt zum Start";
+          if (!elem) { showStatus("Keine Route gefunden." + (legName ? ` (${legName})` : ""), "error"); return; }
+          if (elem.status !== "OK") {
+            let msg = "Keine Route";
+            if (elem.status === "ZERO_RESULTS") msg = "Keine Route zwischen diesen Adressen gefunden.";
+            else if (elem.status === "NOT_FOUND") msg = "Eine der Adressen konnte nicht gefunden werden.";
+            showStatus(msg + (legName ? ` – ${legName}` : "") + " (" + elem.status + ")", "error"); return;
+          }
+          legs.push({
+            km: Math.ceil(elem.distance.value / 1000),
+            text: elem.distance.text,
+            from: response.originAddresses[i],
+            to: response.destinationAddresses[i],
+          });
         }
 
-        const meters = elem.distance.value;
-        const kmEinfach = Math.ceil(meters / 1000);
-        const oneWay = kmEinfach * rate;
-        const roundTrip = kmEinfach * rate * 2;
+        // Gefahrene km je Auftrag (Teilstrecke dorthin; Rückweg beim letzten Auftrag)
+        const kmJeAuftrag = sorted.map((x, i) => legs[i].km);
+        if (fahrtmodus === "rueck") {
+          if (n === 1) kmJeAuftrag[0] = legs[0].km * 2;
+          else kmJeAuftrag[n - 1] += legs[n].km;
+        }
 
-        // Gewählter Modus: einfache oder Hin+Rück-Fahrt
-        const fahrtmodus = document.querySelector('input[name="fahrtmodus"]:checked')?.value || "rueck";
-        const gefahreneKm = fahrtmodus === "rueck" ? kmEinfach * 2 : kmEinfach;
-        const fahrtkosten = gefahreneKm * rate;
-
-        // Verpflegung + Abzüge
+        // Verpflegung + Mahlzeiten je Tag dem zuständigen Auftrag zuordnen
         updateVerpflegung();
-        const verpflegung = verpflegungValue;
-        const mzTotals = getMahlzeitenTotals();
-        const abzugFrueh = mzTotals.cf * 5.60;
-        const abzugMittag = mzTotals.cm * 11.20;
-        const abzugAbend = mzTotals.ca * 11.20;
-        const nebenkosten = parseFloat((nebenkostenInput.value || "0").replace(",", ".")) || 0;
+        const m = getReiseTage();
+        const tage = m.tage || [];
+        const owners = getTagZuordnung(tage.length);
+        const proAuftrag = new Map(sorted.map(x => [x.a, { vp: 0, cf: 0, cm: 0, ca: 0 }]));
+        tage.forEach((t, d) => {
+          const agg = proAuftrag.get(owners[d].a);
+          const sel = mahlzeiten[d] || {};
+          agg.vp += t.allowance;
+          if (sel.f) agg.cf++;
+          if (sel.m) agg.cm++;
+          if (sel.a) agg.ca++;
+        });
 
-        const summe = verpflegung - abzugFrueh - abzugMittag - abzugAbend + fahrtkosten + nebenkosten;
+        // Excel-Zeilen bauen (je Auftrag 16 Spalten, Tab-getrennt, leere Spalte 8)
+        let gesamtSumme = 0, gesamtKm = 0;
+        const zeilen = sorted.map((x, i) => {
+          const a = x.a;
+          const agg = proAuftrag.get(a);
+          const abzugFrueh = agg.cf * 5.60;
+          const abzugMittag = agg.cm * 11.20;
+          const abzugAbend = agg.ca * 11.20;
+          const nebenkosten = parseFloat((a.nebenInput.value || "0").replace(",", ".")) || 0;
+          const km = kmJeAuftrag[i];
+          const fahrtkosten = km * rate;
+          const summe = agg.vp - abzugFrueh - abzugMittag - abzugAbend + fahrtkosten + nebenkosten;
+          gesamtSumme += summe;
+          gesamtKm += km;
+          const datumIso = tage[a.dayIdx]?.iso || startDatumInput.value;
+          return [
+            formatDateDE(datumIso),
+            i === 0 ? (reiseantrittInput.value || "") : "",       // Reiseantritt nur in 1. Zeile
+            i === n - 1 ? (reiseendeInput.value || "") : "",      // Reiseende nur in letzter Zeile
+            i === 0 ? starttyp : "",                               // Start (B/W) nur in 1. Zeile
+            legs[i].to || dests[i],
+            a.untInput.value.trim(),
+            a.zweckInput.value.trim(),
+            "",                                                    // leere 8. Spalte
+            agg.vp > 0 ? formatNumDE(agg.vp) : "",
+            abzugFrueh > 0 ? "-" + formatNumDE(abzugFrueh) : "",
+            abzugMittag > 0 ? "-" + formatNumDE(abzugMittag) : "",
+            abzugAbend > 0 ? "-" + formatNumDE(abzugAbend) : "",
+            String(km),
+            formatNumDE(fahrtkosten),
+            formatNumDE(nebenkosten),
+            formatNumDE(summe)
+          ].join("\t");
+        });
 
         // Ergebnis-Anzeige
-        kmEl.textContent = kmEinfach.toLocaleString("de-DE");
-        distanceLabelEl.textContent = `${response.originAddresses[0]} → ${response.destinationAddresses[0]} (${elem.distance.text}, aufgerundet)`;
-        costOneWayEl.textContent = formatEuro(oneWay);
-        costOneWayCalcEl.textContent = `${kmEinfach} km × ${formatEuro(rate)}`;
-        costRoundTripEl.textContent = formatEuro(roundTrip);
-        costRoundTripCalcEl.textContent = `${kmEinfach} km × ${formatEuro(rate)} × 2`;
+        if (!multi) {
+          const kmEinfach = legs[0].km;
+          kmEl.textContent = kmEinfach.toLocaleString("de-DE");
+          distanceLabelEl.textContent = `${legs[0].from} → ${legs[0].to} (${legs[0].text}, aufgerundet)`;
+          costOneWayEl.textContent = formatEuro(kmEinfach * rate);
+          costOneWayCalcEl.textContent = `${kmEinfach} km × ${formatEuro(rate)}`;
+          costRoundTripEl.textContent = formatEuro(kmEinfach * rate * 2);
+          costRoundTripCalcEl.textContent = `${kmEinfach} km × ${formatEuro(rate)} × 2`;
+          costsBoxesEl.style.display = "";
+          legsTableEl.style.display = "none";
+          excelTitleEl.textContent = "Excel-Zeile (Tab-getrennt)";
+        } else {
+          kmEl.textContent = gesamtKm.toLocaleString("de-DE");
+          const kette = [startName, ...sorted.map(x => `Auftrag ${x.nr}`)];
+          if (mitRueckweg) kette.push(startName);
+          distanceLabelEl.textContent = `Gesamtstrecke: ${kette.join(" → ")} (je Teilstrecke aufgerundet)`;
+          legsTbodyEl.innerHTML = legs.map((l, i) => {
+            const fromLabel = i === 0 ? startName : kurzAdresse(l.from);
+            const toLabel = i === n ? startName : kurzAdresse(l.to);
+            const zuordnung = i < n ? `Auftrag ${sorted[i].nr}` : `Rückfahrt (Auftrag ${sorted[n - 1].nr})`;
+            return `<tr><td>${escHtml(fromLabel)} → ${escHtml(toLabel)}</td><td>${zuordnung}</td><td class="num">${l.km}</td><td class="num">${formatEuro(l.km * rate)}</td></tr>`;
+          }).join("");
+          costsBoxesEl.style.display = "none";
+          legsTableEl.style.display = "";
+          excelTitleEl.textContent = `Excel-Zeilen (${n} Aufträge, Tab-getrennt)`;
+        }
 
-        // Excel-Zeile bauen (16 Spalten, Tab-getrennt, leere Spalte 8 zwischen Zweck und Verpflegung)
-        const col = {
-          datum: formatDateDE(startDatumInput.value),
-          reiseantritt: reiseantrittInput.value || "",     // HH:MM
-          reiseende: reiseendeInput.value || "",
-          start: starttyp,                                  // "B" oder "W"
-          ziel: response.destinationAddresses[0] || destination,
-          unternehmer: unternehmerInput.value.trim(),
-          zweck: zweckInput.value.trim(),
-          spacer: "",                                       // leere 8. Spalte
-          verpflegung: verpflegung > 0 ? formatNumDE(verpflegung) : "",
-          abzFrueh: abzugFrueh > 0 ? "-" + formatNumDE(abzugFrueh) : "",
-          abzMittag: abzugMittag > 0 ? "-" + formatNumDE(abzugMittag) : "",
-          abzAbend: abzugAbend > 0 ? "-" + formatNumDE(abzugAbend) : "",
-          km: String(gefahreneKm),
-          fahrtkosten: formatNumDE(fahrtkosten),
-          nebenkosten: formatNumDE(nebenkosten),
-          summe: formatNumDE(summe)
-        };
-        const excelLine = [
-          col.datum, col.reiseantritt, col.reiseende, col.start,
-          col.ziel, col.unternehmer, col.zweck, col.spacer,
-          col.verpflegung, col.abzFrueh, col.abzMittag, col.abzAbend,
-          col.km, col.fahrtkosten, col.nebenkosten, col.summe
-        ].join("\t");
+        excelLineEl.value = zeilen.join("\n");
+        excelLineEl.rows = Math.max(2, n + 1);
+        summeValEl.textContent = formatEuro(gesamtSumme);
 
-        excelLineEl.value = excelLine;
-        summeValEl.textContent = formatEuro(summe);
-
-        // Letzte Werte merken
-        if (col.unternehmer) localStorage.setItem(LS_UNTERNEHMER, col.unternehmer);
-        if (col.zweck) localStorage.setItem(LS_ZWECK, col.zweck);
+        // Letzte Werte merken (vom ersten Auftrag)
+        const erster = auftraege[0];
+        if (erster.untInput.value.trim()) localStorage.setItem(LS_UNTERNEHMER, erster.untInput.value.trim());
+        if (erster.zweckInput.value.trim()) localStorage.setItem(LS_ZWECK, erster.zweckInput.value.trim());
 
         resultEl.style.display = "block";
         hideStatus();
