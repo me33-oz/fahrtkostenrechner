@@ -516,14 +516,14 @@
       </div>
     </div>
 
-    <p class="footer-note">Entfernungen werden per Google Maps berechnet und auf den nächsten vollen Kilometer aufgerundet.</p>
+    <p class="footer-note">Entfernungen werden per OpenStreetMap (OSRM) berechnet und auf den nächsten vollen Kilometer aufgerundet.</p>
   </div>
 
   <script>
     // ============================================================
     // TEAM-KONFIGURATION – hier einmalig eintragen, dann teilen
     // ============================================================
-    const EMBEDDED_API_KEY = "AIzaSyA14WNfD_A0X4nw8WcfTf_FAXTlDrxdUQM";
+    const EMBEDDED_API_KEY = "osm"; // Kein Google-Key mehr nötig – Kartendienst: OpenStreetMap (Photon + OSRM)
     // ============================================================
 
     const LS_KEY = "fahrtkosten_gmaps_key";
@@ -886,22 +886,147 @@
     }
     function hideStatus() { statusEl.style.display = "none"; }
 
-    function loadGoogleMaps(apiKey) {
-      return new Promise((resolve, reject) => {
-        if (mapsLoaded) { resolve(); return; }
-        window.__gmapsCallback = () => { mapsLoaded = true; resolve(); };
-        window.gm_authFailure = () => {
-          showKeyStatus("Google Maps API-Key wurde abgelehnt. Prüfe Key + aktivierte APIs (Maps JavaScript, Places, Distance Matrix) + Billing.", "error");
-          mainCard.style.display = "none";
-          apiKeyCard.style.display = "block";
-        };
-        const script = document.createElement("script");
-        script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=places&language=de&region=DE&callback=__gmapsCallback`;
-        script.async = true;
-        script.defer = true;
-        script.onerror = () => reject(new Error("Google Maps konnte nicht geladen werden (Netzwerkfehler)."));
-        document.head.appendChild(script);
-      });
+    // ============================================================
+    // Kartendienst: OpenStreetMap statt Google (kostenlos, kein Key)
+    //  - Adresssuche/Geocoding: Photon (photon.komoot.io)
+    //  - Strecken in km: OSRM (router.project-osrm.org, Auto-Profil)
+    // Stellt eine Google-kompatible Mini-Schnittstelle bereit, damit der
+    // restliche Code (AutocompleteService / DistanceMatrixService) unverändert bleibt.
+    // ============================================================
+    const PHOTON_URL = "https://photon.komoot.io/api/";
+    const OSRM_TABLE_URL = "https://router.project-osrm.org/table/v1/driving/";
+    const GEO_BIAS = { lat: 53.55, lon: 9.99 }; // Ergebnisse rund um Hamburg bevorzugen
+    const geoCache = new Map(); // Adresstext -> { lat, lon, label } | null
+
+    const COUNTRY_DE = { de: "Deutschland", at: "Österreich", ch: "Schweiz", fr: "Frankreich", it: "Italien",
+      nl: "Niederlande", be: "Belgien", lu: "Luxemburg", pl: "Polen", cz: "Tschechien", dk: "Dänemark" };
+
+    function photonFormat(f) {
+      const p = f.properties || {};
+      const street = p.street ? p.street + (p.housenumber ? " " + p.housenumber : "") : "";
+      const postcode = p.postcode || (/^\d{4,5}$/.test(p.name || "") ? p.name : ""); // PLZ-Treffer haben die PLZ nur im Namen
+      const ortName = p.city || p.town || p.village || p.locality || p.district || p.county || "";
+      const ort = [postcode, ortName].filter(Boolean).join(" ");
+      let main = p.name && p.name !== postcode && p.name !== p.street ? p.name : (street || ort || p.name || "");
+      if (!main && p.state) main = p.state;
+      const land = COUNTRY_DE[(p.countrycode || "").toLowerCase()] || p.country || "";
+      const rest = [];
+      if (street && street !== main) rest.push(street);
+      if (ort && ort !== main) rest.push(ort);
+      if (land && land !== main) rest.push(land);
+      const secondary = rest.join(", ");
+      const [lon, lat] = f.geometry.coordinates;
+      return { main, secondary, description: secondary ? `${main}, ${secondary}` : main, lat, lon, postcode };
+    }
+
+    async function photonSearch(text, { limit = 6, country = "", signal } = {}) {
+      const params = new URLSearchParams({ q: text, lang: "de", limit: String(limit), lat: GEO_BIAS.lat, lon: GEO_BIAS.lon });
+      const res = await fetch(PHOTON_URL + "?" + params, { signal });
+      if (!res.ok) throw new Error("Adresssuche nicht erreichbar (HTTP " + res.status + ")");
+      const data = await res.json();
+      let feats = data.features || [];
+      if (country) feats = feats.filter(f => (f.properties?.countrycode || "").toLowerCase() === country);
+      // Bei Hausnummern/PLZ reine Adressen vor Geschäften/POIs anzeigen
+      const named = f => { const p = f.properties || {}; return p.name && p.name !== p.postcode && !/^\d{4,5}$/.test(p.name) ? 1 : 0; };
+      if (/\d/.test(text)) feats = [...feats].sort((a, b) => named(a) - named(b));
+      const seen = new Set();
+      return feats.map(photonFormat).filter(r => r.main && !seen.has(r.description) && seen.add(r.description));
+    }
+
+    async function geocode(text) {
+      const key = text.trim();
+      if (geoCache.has(key)) return geoCache.get(key);
+      let hits = await photonSearch(key, { limit: 1 });
+      if (!hits.length) {
+        // Fallback: Länderzusatz weglassen bzw. nur PLZ + Ort verwenden
+        const ohneLand = key.replace(/,\s*(Deutschland|Germany|Österreich|Austria|Schweiz|Switzerland)\s*$/i, "");
+        const plzOrt = ohneLand.match(/\b\d{4,5}\s+[^,]+/);
+        for (const alt of [ohneLand, plzOrt && plzOrt[0]]) {
+          if (alt && alt !== key) { hits = await photonSearch(alt, { limit: 1 }); if (hits.length) break; }
+        }
+      }
+      // Reine PLZ-Suche: nur Treffer mit genau dieser PLZ akzeptieren
+      const plzOnly = key.match(/^(\d{4,5})\s*(,|$)/);
+      if (plzOnly && hits[0] && hits[0].postcode !== plzOnly[1]) hits = [];
+      const r = hits[0] ? { lat: hits[0].lat, lon: hits[0].lon, label: hits[0].description } : null;
+      geoCache.set(key, r);
+      return r;
+    }
+
+    function kmText(meters) {
+      return (meters / 1000).toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + " km";
+    }
+
+    window.google = { maps: {
+      TravelMode: { DRIVING: "DRIVING" },
+      UnitSystem: { METRIC: 0 },
+      places: {
+        PlacesServiceStatus: { OK: "OK", ZERO_RESULTS: "ZERO_RESULTS" },
+        AutocompleteSessionToken: class {},
+        AutocompleteService: class {
+          getPlacePredictions(req, cb) {
+            if (this._ctrl) this._ctrl.abort(); // veraltete Anfragen abbrechen
+            const ctrl = this._ctrl = new AbortController();
+            const country = (req.componentRestrictions?.country || "").toLowerCase();
+            photonSearch(req.input, { limit: 8, country, signal: ctrl.signal })
+              .then(hits => {
+                const preds = hits.slice(0, 6).map(h => {
+                  geoCache.set(h.description, { lat: h.lat, lon: h.lon, label: h.description });
+                  return { description: h.description, structured_formatting: { main_text: h.main, secondary_text: h.secondary } };
+                });
+                cb(preds.length ? preds : null, preds.length ? "OK" : "ZERO_RESULTS");
+              })
+              .catch(err => { if (err.name !== "AbortError") cb(null, "ERROR"); });
+          }
+        }
+      },
+      DistanceMatrixService: class {
+        getDistanceMatrix(req, cb) {
+          (async () => {
+            const origins = req.origins.map(String), dests = req.destinations.map(String);
+            const unique = [...new Set([...origins, ...dests])];
+            const geo = new Map();
+            for (let i = 0; i < unique.length; i += 5) { // max. 5 parallele Anfragen
+              const part = unique.slice(i, i + 5);
+              const res = await Promise.all(part.map(geocode));
+              part.forEach((t, j) => geo.set(t, res[j]));
+            }
+            const pts = unique.filter(t => geo.get(t));
+            const idx = new Map(pts.map((t, i) => [t, i]));
+            const src = origins.filter(t => idx.has(t)), dst = dests.filter(t => idx.has(t));
+            let dist = null;
+            if (src.length && dst.length) {
+              const coords = pts.map(t => `${geo.get(t).lon.toFixed(6)},${geo.get(t).lat.toFixed(6)}`).join(";");
+              const url = OSRM_TABLE_URL + coords + "?annotations=distance"
+                + "&sources=" + [...new Set(src.map(t => idx.get(t)))].join(";")
+                + "&destinations=" + [...new Set(dst.map(t => idx.get(t)))].join(";");
+              const res = await fetch(url);
+              const data = await res.json().catch(() => ({}));
+              if (!res.ok || data.code !== "Ok") throw new Error(data.message || "Routing-Dienst nicht erreichbar (HTTP " + res.status + ")");
+              const srcIdx = [...new Set(src.map(t => idx.get(t)))], dstIdx = [...new Set(dst.map(t => idx.get(t)))];
+              dist = (o, d) => data.distances[srcIdx.indexOf(idx.get(o))][dstIdx.indexOf(idx.get(d))];
+            }
+            const rows = origins.map(o => ({ elements: dests.map(d => {
+              if (!geo.get(o) || !geo.get(d)) return { status: "NOT_FOUND" };
+              const m = dist(o, d);
+              return m == null ? { status: "ZERO_RESULTS" } : { status: "OK", distance: { value: Math.round(m), text: kmText(m) } };
+            }) }));
+            cb({
+              rows,
+              originAddresses: origins.map(t => geo.get(t)?.label || t),
+              destinationAddresses: dests.map(t => geo.get(t)?.label || t),
+            }, "OK");
+          })().catch(err => {
+            console.error(err);
+            cb(null, "Kartendienst-Fehler: " + err.message);
+          });
+        }
+      }
+    } };
+
+    function loadGoogleMaps() { // Name beibehalten; lädt nichts mehr von Google
+      mapsLoaded = true;
+      return Promise.resolve();
     }
 
     function initServices() {
@@ -1122,7 +1247,7 @@
 
       const rate = parseFloat((rateInput.value || "0").replace(",", "."));
       if (isNaN(rate) || rate < 0) { showStatus("Bitte eine gültige Kilometerpauschale angeben.", "error"); return; }
-      if (!distanceService) { showStatus("Google Maps noch nicht bereit.", "error"); return; }
+      if (!distanceService) { showStatus("Kartendienst noch nicht bereit.", "error"); return; }
 
       const fahrtmodus = document.querySelector('input[name="fahrtmodus"]:checked')?.value || "rueck";
       const sorted = getSortierteAuftraege();          // Routen-Reihenfolge
@@ -1370,7 +1495,7 @@
           unitSystem: google.maps.UnitSystem.METRIC,
         }, (response, status) => {
           if (status !== "OK") {
-            let msg = "Distance Matrix Fehler: " + status;
+            let msg = "Fehler: " + status;
             if (status === "REQUEST_DENIED") msg = "Distance Matrix API abgelehnt. Bitte im Google-Cloud-Projekt aktivieren und Billing prüfen.";
             reject(new Error(msg));
             return;
@@ -1393,7 +1518,7 @@
       const rate = parseFloat((nearestRateInput.value || "0").replace(",", "."));
       if (isNaN(rate) || rate < 0) { showNearestStatus("Bitte eine gültige Kilometerpauschale angeben.", "error"); return; }
 
-      if (!distanceService) { showNearestStatus("Google Maps noch nicht bereit.", "error"); return; }
+      if (!distanceService) { showNearestStatus("Kartendienst noch nicht bereit.", "error"); return; }
 
       // Wenn der Einsatzort eine reine PLZ ist, auch hier Country-Suffix anhängen
       const einsatzortFormatted = /^\d{4,5}$/.test(einsatzortRaw) ? formatPlzForGeocode(einsatzortRaw) : einsatzortRaw;
